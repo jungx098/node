@@ -28,6 +28,9 @@ def main():
   print 'Clobbering to hopefully resolve problem with mksnapshot'
   print 'Clobber after ICU roll.'
   print 'Clobber after Android NDK update.'
+  print 'Clober to fix windows build problems.'
+  print 'Clober again to fix windows build problems.'
+  print 'Clobber to possibly resolve failure on win-32 bot.'
   return 0
 
 

@@ -1,6 +1,5 @@
 'use strict';
 const common = require('../common');
-const assert = require('assert');
 
 if (!common.hasCrypto) {
   common.skip('missing crypto');
@@ -18,7 +17,7 @@ const path = require('path');
   const key = fs.readFileSync(path.join(common.fixturesDir, 'test_key.pem'));
 
   const options = {cert: cert, key: key, port: common.PORT};
-  const conn = tls.connect(options, common.fail);
+  const conn = tls.connect(options, common.mustNotCall());
 
   conn.on('error', common.mustCall(function() {}));
 }
@@ -33,9 +32,7 @@ const path = require('path');
     key: key,
     port: common.PORT,
     ciphers: 'rick-128-roll'
-  }, function() {
-    assert.ok(false); // callback should never be executed
-  });
+  }, common.mustNotCall());
 
   conn.on('error', common.mustCall(function() {}));
 }

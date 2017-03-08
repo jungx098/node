@@ -10,6 +10,7 @@
 namespace v8 {
 namespace internal {
 
+class SmallMapList;
 
 // The stub cache is used for megamorphic property accesses.
 // It maps (map, name, type) to property access handlers. The cache does not
@@ -34,14 +35,14 @@ class StubCache {
  public:
   struct Entry {
     Name* key;
-    Code* value;
+    Object* value;
     Map* map;
   };
 
   void Initialize();
   // Access cache for entry hash(name, map).
-  Code* Set(Name* name, Map* map, Code* code);
-  Code* Get(Name* name, Map* map);
+  Object* Set(Name* name, Map* map, Object* handler);
+  Object* Get(Name* name, Map* map);
   // Clear the lookup table (@ mark compact collection).
   void Clear();
   // Collect all maps that match the name.

@@ -2,16 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/builtins/builtins.h"
 #include "src/builtins/builtins-utils.h"
+#include "src/builtins/builtins.h"
 #include "src/ic/handler-compiler.h"
 #include "src/ic/ic.h"
+#include "src/ic/keyed-store-generic.h"
 
 namespace v8 {
 namespace internal {
 
-void Builtins::Generate_KeyedLoadIC_Megamorphic(MacroAssembler* masm) {
-  KeyedLoadIC::GenerateMegamorphic(masm);
+void Builtins::Generate_KeyedLoadIC_Megamorphic_TF(
+    CodeStubAssembler* assembler) {
+  typedef compiler::Node Node;
+  typedef LoadWithVectorDescriptor Descriptor;
+
+  Node* receiver = assembler->Parameter(Descriptor::kReceiver);
+  Node* name = assembler->Parameter(Descriptor::kName);
+  Node* slot = assembler->Parameter(Descriptor::kSlot);
+  Node* vector = assembler->Parameter(Descriptor::kVector);
+  Node* context = assembler->Parameter(Descriptor::kContext);
+
+  CodeStubAssembler::LoadICParameters p(context, receiver, name, slot, vector);
+  assembler->KeyedLoadICGeneric(&p);
 }
 
 void Builtins::Generate_KeyedLoadIC_Miss(MacroAssembler* masm) {
@@ -29,12 +41,38 @@ void Builtins::Generate_KeyedStoreIC_Megamorphic_Strict(MacroAssembler* masm) {
   KeyedStoreIC::GenerateMegamorphic(masm, STRICT);
 }
 
+void KeyedStoreICMegamorphic(CodeStubAssembler* assembler, LanguageMode mode) {
+  typedef compiler::Node Node;
+  typedef StoreWithVectorDescriptor Descriptor;
+
+  Node* receiver = assembler->Parameter(Descriptor::kReceiver);
+  Node* name = assembler->Parameter(Descriptor::kName);
+  Node* value = assembler->Parameter(Descriptor::kValue);
+  Node* slot = assembler->Parameter(Descriptor::kSlot);
+  Node* vector = assembler->Parameter(Descriptor::kVector);
+  Node* context = assembler->Parameter(Descriptor::kContext);
+
+  CodeStubAssembler::StoreICParameters p(context, receiver, name, value, slot,
+                                         vector);
+  KeyedStoreGenericGenerator::Generate(assembler, &p, mode);
+}
+
+void Builtins::Generate_KeyedStoreIC_Megamorphic_TF(
+    CodeStubAssembler* assembler) {
+  KeyedStoreICMegamorphic(assembler, SLOPPY);
+}
+
+void Builtins::Generate_KeyedStoreIC_Megamorphic_Strict_TF(
+    CodeStubAssembler* assembler) {
+  KeyedStoreICMegamorphic(assembler, STRICT);
+}
+
 void Builtins::Generate_KeyedStoreIC_Miss(MacroAssembler* masm) {
   KeyedStoreIC::GenerateMiss(masm);
 }
 
 void Builtins::Generate_KeyedStoreIC_Slow(MacroAssembler* masm) {
-  ElementHandlerCompiler::GenerateStoreSlow(masm);
+  KeyedStoreIC::GenerateSlow(masm);
 }
 
 void Builtins::Generate_LoadGlobalIC_Miss(CodeStubAssembler* assembler) {
@@ -105,8 +143,8 @@ void Builtins::Generate_StoreIC_Miss(CodeStubAssembler* assembler) {
   Node* vector = assembler->Parameter(Descriptor::kVector);
   Node* context = assembler->Parameter(Descriptor::kContext);
 
-  assembler->TailCallRuntime(Runtime::kStoreIC_Miss, context, receiver, name,
-                             value, slot, vector);
+  assembler->TailCallRuntime(Runtime::kStoreIC_Miss, context, value, slot,
+                             vector, receiver, name);
 }
 
 void Builtins::Generate_StoreIC_Normal(MacroAssembler* masm) {

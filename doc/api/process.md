@@ -1,4 +1,4 @@
-# process
+# Process
 
 <!-- type=global -->
 
@@ -203,6 +203,14 @@ to detect application failures and recover or restart as needed.
 ### Event: 'unhandledRejection'
 <!-- YAML
 added: v1.4.1
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/8217
+    description: Not handling Promise rejections has been deprecated.
+  - version: v6.6.0
+    pr-url: https://github.com/nodejs/node/pull/8223
+    description: Unhandled Promise rejections have been will now emit
+                 a process warning.
 -->
 
 The `'unhandledRejection`' event is emitted whenever a `Promise` is rejected and
@@ -268,9 +276,9 @@ lead to sub-optimal application performance, bugs or security vulnerabilities.
 The listener function is called with a single `warning` argument whose value is
 an `Error` object. There are three key properties that describe the warning:
 
-* `name` {String} The name of the warning (currently `Warning` by default).
-* `message` {String} A system-provided description of the warning.
-* `stack` {String} A stack trace to the location in the code where the warning
+* `name` {string} The name of the warning (currently `Warning` by default).
+* `message` {string} A system-provided description of the warning.
+* `stack` {string} A stack trace to the location in the code where the warning
   was issued.
 
 ```js
@@ -490,7 +498,7 @@ property is `undefined`.
 added: v0.1.17
 -->
 
-* `directory` {String}
+* `directory` {string}
 
 The `process.chdir()` method changes the current working directory of the
 Node.js process or throws an exception if doing so fails (for instance, if
@@ -629,6 +637,103 @@ process's [`ChildProcess.disconnect()`][].
 If the Node.js process was not spawned with an IPC channel,
 `process.disconnect()` will be `undefined`.
 
+## process.emitWarning(warning[, type[, code]][, ctor])
+<!-- YAML
+added: v6.0.0
+-->
+
+* `warning` {string | Error} The warning to emit.
+* `type` {string} When `warning` is a String, `type` is the name to use
+  for the *type* of warning being emitted. Default: `Warning`.
+* `code` {string} A unique identifier for the warning instance being emitted.
+* `ctor` {Function} When `warning` is a String, `ctor` is an optional
+  function used to limit the generated stack trace. Default
+  `process.emitWarning`
+
+The `process.emitWarning()` method can be used to emit custom or application
+specific process warnings. These can be listened for by adding a handler to the
+[`process.on('warning')`][process_warning] event.
+
+```js
+// Emit a warning using a string...
+process.emitWarning('Something happened!');
+// Emits: (node: 56338) Warning: Something happened!
+```
+
+```js
+// Emit a warning using a string and a type...
+process.emitWarning('Something Happened!', 'CustomWarning');
+// Emits: (node:56338) CustomWarning: Something Happened!
+```
+
+```js
+process.emitWarning('Something happened!', 'CustomWarning', 'WARN001');
+// Emits: (node:56338) CustomWarning [WARN001]: Something Happened!
+```
+
+In each of the previous examples, an `Error` object is generated internally by
+`process.emitWarning()` and passed through to the
+[`process.on('warning')`][process_warning] event.
+
+```js
+process.on('warning', (warning) => {
+  console.warn(warning.name);
+  console.warn(warning.message);
+  console.warn(warning.code);
+  console.warn(warning.stack);
+});
+```
+
+If `warning` is passed as an `Error` object, it will be passed through to the
+`process.on('warning')` event handler unmodified (and the optional `type`,
+`code` and `ctor` arguments will be ignored):
+
+```js
+// Emit a warning using an Error object...
+const myWarning = new Error('Warning! Something happened!');
+// Use the Error name property to specify the type name
+myWarning.name = 'CustomWarning';
+myWarning.code = 'WARN001';
+
+process.emitWarning(myWarning);
+// Emits: (node:56338) CustomWarning [WARN001]: Warning! Something Happened!
+```
+
+A `TypeError` is thrown if `warning` is anything other than a string or `Error`
+object.
+
+Note that while process warnings use `Error` objects, the process warning
+mechanism is **not** a replacement for normal error handling mechanisms.
+
+The following additional handling is implemented if the warning `type` is
+`DeprecationWarning`:
+
+* If the `--throw-deprecation` command-line flag is used, the deprecation
+  warning is thrown as an exception rather than being emitted as an event.
+* If the `--no-deprecation` command-line flag is used, the deprecation
+  warning is suppressed.
+* If the `--trace-deprecation` command-line flag is used, the deprecation
+  warning is printed to `stderr` along with the full stack trace.
+
+### Avoiding duplicate warnings
+
+As a best practice, warnings should be emitted only once per process. To do
+so, it is recommended to place the `emitWarning()` behind a simple boolean
+flag as illustrated in the example below:
+
+```js
+function emitMyWarning() {
+  if (!emitMyWarning.warned) {
+    emitMyWarning.warned = true;
+    process.emitWarning('Only warn once!');
+  }
+}
+emitMyWarning();
+// Emits: (node: 56339) Warning: Only warn once!
+emitMyWarning();
+// Emits nothing
+```
+
 ## process.env
 <!-- YAML
 added: v0.1.27
@@ -706,94 +811,6 @@ console.log(process.env.test);
 // => 1
 ```
 
-## process.emitWarning(warning[, name][, ctor])
-<!-- YAML
-added: v6.0.0
--->
-
-* `warning` {String | Error} The warning to emit.
-* `name` {String} When `warning` is a String, `name` is the name to use
-  for the warning. Default: `Warning`.
-* `ctor` {Function} When `warning` is a String, `ctor` is an optional
-  function used to limit the generated stack trace. Default
-  `process.emitWarning`
-
-The `process.emitWarning()` method can be used to emit custom or application
-specific process warnings. These can be listened for by adding a handler to the
-[`process.on('warning')`][process_warning] event.
-
-```js
-// Emit a warning using a string...
-process.emitWarning('Something happened!');
-// Emits: (node: 56338) Warning: Something happened!
-```
-
-```js
-// Emit a warning using a string and a name...
-process.emitWarning('Something Happened!', 'CustomWarning');
-// Emits: (node:56338) CustomWarning: Something Happened!
-```
-
-In each of the previous examples, an `Error` object is generated internally by
-`process.emitWarning()` and passed through to the
-[`process.on('warning')`][process_warning] event.
-
-```js
-process.on('warning', (warning) => {
-  console.warn(warning.name);
-  console.warn(warning.message);
-  console.warn(warning.stack);
-});
-```
-
-If `warning` is passed as an `Error` object, it will be passed through to the
-`process.on('warning')` event handler unmodified (and the optional `name`
-and `ctor` arguments will be ignored):
-
-```js
-// Emit a warning using an Error object...
-const myWarning = new Error('Warning! Something happened!');
-myWarning.name = 'CustomWarning';
-
-process.emitWarning(myWarning);
-// Emits: (node:56338) CustomWarning: Warning! Something Happened!
-```
-
-A `TypeError` is thrown if `warning` is anything other than a string or `Error`
-object.
-
-Note that while process warnings use `Error` objects, the process warning
-mechanism is **not** a replacement for normal error handling mechanisms.
-
-The following additional handling is implemented if the warning `name` is
-`DeprecationWarning`:
-
-* If the `--throw-deprecation` command-line flag is used, the deprecation
-  warning is thrown as an exception rather than being emitted as an event.
-* If the `--no-deprecation` command-line flag is used, the deprecation
-  warning is suppressed.
-* If the `--trace-deprecation` command-line flag is used, the deprecation
-  warning is printed to `stderr` along with the full stack trace.
-
-### Avoiding duplicate warnings
-
-As a best practice, warnings should be emitted only once per process. To do
-so, it is recommended to place the `emitWarning()` behind a simple boolean
-flag as illustrated in the example below:
-
-```js
-function emitMyWarning() {
-  if (!emitMyWarning.warned) {
-    emitMyWarning.warned = true;
-    process.emitWarning('Only warn once!');
-  }
-}
-emitMyWarning();
-// Emits: (node: 56339) Warning: Only warn once!
-emitMyWarning();
-// Emits nothing
-```
-
 ## process.execArgv
 <!-- YAML
 added: v0.7.7
@@ -850,10 +867,11 @@ added: v0.1.13
 
 * `code` {Integer} The exit code. Defaults to `0`.
 
-The `process.exit()` method instructs Node.js to terminate the process as
-quickly as possible with the specified exit `code`. If the `code` is omitted,
-exit uses either the 'success' code `0` or the value of `process.exitCode` if
-specified.
+The `process.exit()` method instructs Node.js to terminate the process
+synchronously with an exit status of `code`. If `code` is omitted, exit uses
+either the 'success' code `0` or the value of `process.exitCode` if it has been
+set.  Node.js will not terminate until all the [`'exit'`] event listeners are
+called.
 
 To exit with a 'failure' code:
 
@@ -886,7 +904,7 @@ if (someConditionNotMet()) {
 ```
 
 The reason this is problematic is because writes to `process.stdout` in Node.js
-are sometimes *non-blocking* and may occur over multiple ticks of the Node.js
+are sometimes *asynchronous* and may occur over multiple ticks of the Node.js
 event loop. Calling `process.exit()`, however, forces the process to exit
 *before* those additional writes to `stdout` can be performed.
 
@@ -1016,18 +1034,25 @@ Android)
 added: v0.7.6
 -->
 
-The `process.hrtime()` method returns the current high-resolution real time in a
-`[seconds, nanoseconds]` tuple Array. `time` is an optional parameter that must
-be the result of a previous `process.hrtime()` call (and therefore, a real time
-in a `[seconds, nanoseconds]` tuple Array containing a previous time) to diff
-with the current time. These times are relative to an arbitrary time in the
-past, and not related to the time of day and therefore not subject to clock
-drift. The primary use is for measuring performance between intervals.
+* `time` {Array} The result of a previous call to `process.hrtime()`
+* Returns: {Array}
 
-Passing in the result of a previous call to `process.hrtime()` is useful for
-calculating an amount of time passed between calls:
+The `process.hrtime()` method returns the current high-resolution real time
+in a `[seconds, nanoseconds]` tuple Array, where `nanoseconds` is the
+remaining part of the real time that can't be represented in second precision.
+
+`time` is an optional parameter that must be the result of a previous
+`process.hrtime()` call to diff with the current time. If the parameter
+passed in is not a tuple Array, a `TypeError` will be thrown. Passing in a
+user-defined array instead of the result of a previous call to
+`process.hrtime()` will lead to undefined behavior.
+
+These times are relative to an arbitrary time in the
+past, and not related to the time of day and therefore not subject to clock
+drift. The primary use is for measuring performance between intervals:
 
 ```js
+const NS_PER_SEC = 1e9;
 var time = process.hrtime();
 // [ 1800216, 25 ]
 
@@ -1035,13 +1060,10 @@ setTimeout(() => {
   var diff = process.hrtime(time);
   // [ 1, 552 ]
 
-  console.log(`Benchmark took ${diff[0] * 1e9 + diff[1]} nanoseconds`);
-  // benchmark took 1000000527 nanoseconds
+  console.log(`Benchmark took ${diff[0] * NS_PER_SEC + diff[1]} nanoseconds`);
+  // benchmark took 1000000552 nanoseconds
 }, 1000);
 ```
-
-Constructing an array by some method other than calling `process.hrtime()` and
-passing the result to process.hrtime() will result in undefined behavior.
 
 
 ## process.initgroups(user, extra_group)
@@ -1049,8 +1071,8 @@ passing the result to process.hrtime() will result in undefined behavior.
 added: v0.9.4
 -->
 
-* `user` {String|number} The user name or numeric identifier.
-* `extra_group` {String|number} A group name or numeric identifier.
+* `user` {string|number} The user name or numeric identifier.
+* `extra_group` {string|number} A group name or numeric identifier.
 
 The `process.initgroups()` method reads the `/etc/group` file and initializes
 the group access list, using all groups of which the user is a member. This is
@@ -1076,7 +1098,7 @@ added: v0.0.6
 -->
 
 * `pid` {number} A process ID
-* `signal` {String|number} The signal to send, either as a string or number.
+* `signal` {string|number} The signal to send, either as a string or number.
   Defaults to `'SIGTERM'`.
 
 The `process.kill()` method sends the `signal` to the process identified by
@@ -1129,6 +1151,10 @@ is no entry script.
 ## process.memoryUsage()
 <!-- YAML
 added: v0.1.16
+changes:
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/9587
+    description: Added `external` to the returned object.
 -->
 
 * Returns: {Object}
@@ -1164,6 +1190,10 @@ objects managed by V8.
 ## process.nextTick(callback[, ...args])
 <!-- YAML
 added: v0.1.26
+changes:
+  - version: v1.8.1
+    pr-url: https://github.com/nodejs/node/pull/1077
+    description: Additional arguments after `callback` are now supported.
 -->
 
 * `callback` {Function}
@@ -1283,6 +1313,10 @@ console.log(`This platform is ${process.platform}`);
 ## process.release
 <!-- YAML
 added: v3.0.0
+changes:
+  - version: v4.2.0
+    pr-url: https://github.com/nodejs/node/pull/3212
+    description: The `lts` property is now supported.
 -->
 
 The `process.release` property returns an Object containing metadata related to
@@ -1291,19 +1325,19 @@ tarball.
 
 `process.release` contains the following properties:
 
-* `name` {String} A value that will always be `'node'` for Node.js. For
+* `name` {string} A value that will always be `'node'` for Node.js. For
   legacy io.js releases, this will be `'io.js'`.
-* `sourceUrl` {String} an absolute URL pointing to a _`.tar.gz`_ file containing
+* `sourceUrl` {string} an absolute URL pointing to a _`.tar.gz`_ file containing
   the source code of the current release.
 * `headersUrl`{String} an absolute URL pointing to a _`.tar.gz`_ file containing
   only the source header files for the current release. This file is
   significantly smaller than the full source file and can be used for compiling
   Node.js native add-ons.
-* `libUrl` {String} an absolute URL pointing to a _`node.lib`_ file matching the
+* `libUrl` {string} an absolute URL pointing to a _`node.lib`_ file matching the
   architecture and version of the current release. This file is used for
   compiling Node.js native add-ons. _This property is only present on Windows
   builds of Node.js and will be missing on all other platforms._
-* `lts` {String} a string label identifying the [LTS][] label for this release.
+* `lts` {string} a string label identifying the [LTS][] label for this release.
   If the Node.js release is not an LTS release, this will be `undefined`.
 
 For example:
@@ -1348,7 +1382,7 @@ If Node.js was not spawned with an IPC channel, `process.send()` will be
 added: v2.0.0
 -->
 
-* `id` {String|number} A group name or ID
+* `id` {string|number} A group name or ID
 
 The `process.setegid()` method sets the effective group identity of the process.
 (See setegid(2).) The `id` can be passed as either a numeric ID or a group
@@ -1377,7 +1411,7 @@ Android)
 added: v2.0.0
 -->
 
-* `id` {String|number} A user name or ID
+* `id` {string|number} A user name or ID
 
 The `process.seteuid()` method sets the effective user identity of the process.
 (See seteuid(2).) The `id` can be passed as either a numeric ID or a username
@@ -1405,7 +1439,7 @@ Android)
 added: v0.1.31
 -->
 
-* `id` {String|number} The group name or ID
+* `id` {string|number} The group name or ID
 
 The `process.setgid()` method sets the group identity of the process. (See
 setgid(2).)  The `id` can be passed as either a numeric ID or a group name
@@ -1475,23 +1509,11 @@ Android)
 
 * {Stream}
 
-The `process.stderr` property returns a [Writable][] stream equivalent to or
-associated with `stderr` (fd `2`).
+The `process.stderr` property returns a [Writable][] stream connected to
+`stderr` (fd `2`).
 
-Note: `process.stderr` and `process.stdout` differ from other Node.js streams
-in several ways:
-1. They cannot be closed ([`end()`][] will throw).
-2. They never emit the [`'finish'`][] event.
-3. Writes _can_ block when output is redirected to a file.
-  - Note that disks are fast and operating systems normally employ write-back
-    caching so this is very uncommon.
-4. Writes on UNIX **will** block by default if output is going to a TTY
-   (a terminal).
-5. Windows functionality differs. Writes block except when output is going to a
-   TTY.
-
-To check if Node.js is being run in a TTY context, read the `isTTY` property
-on `process.stderr`, `process.stdout`, or `process.stdin`:
+Note: `process.stderr` differs from other Node.js streams in important ways,
+see [note on process I/O][] for more information.
 
 ## process.stdin
 
@@ -1529,40 +1551,52 @@ must call `process.stdin.resume()` to read from it. Note also that calling
 
 * {Stream}
 
-The `process.stdout` property returns a [Writable][] stream equivalent to or
-associated with `stdout` (fd `1`).
+The `process.stdout` property returns a [Writable][] stream connected to
+`stdout` (fd `2`).
 
-For example:
+For example, to copy process.stdin to process.stdout:
 
 ```js
-console.log = (msg) => {
-  process.stdout.write(`${msg}\n`);
-};
+process.stdin.pipe(process.stdout);
 ```
 
-Note: `process.stderr` and `process.stdout` differ from other Node.js streams
-in several ways:
-1. They cannot be closed ([`end()`][] will throw).
-2. They never emit the [`'finish'`][] event.
-3. Writes _can_ block when output is redirected to a file.
-  - Note that disks are fast and operating systems normally employ write-back
-    caching so this is very uncommon.
-4. Writes on UNIX **will** block by default if output is going to a TTY
-   (a terminal).
-5. Windows functionality differs. Writes block except when output is going to a
-   TTY.
+Note: `process.stdout` differs from other Node.js streams in important ways,
+see [note on process I/O][] for more information.
 
-To check if Node.js is being run in a TTY context, read the `isTTY` property
-on `process.stderr`, `process.stdout`, or `process.stdin`:
+### A note on process I/O
 
-### TTY Terminals and `process.stdout`
+`process.stdout` and `process.stderr` differ from other Node.js streams in
+important ways:
 
-The `process.stderr` and `process.stdout` streams are blocking when outputting
-to TTYs (terminals) on OS X as a workaround for the operating system's small,
-1kb buffer size. This is to prevent interleaving between `stdout` and `stderr`.
+1. They are used internally by [`console.log()`][] and [`console.error()`][],
+   respectively.
+2. They cannot be closed ([`end()`][] will throw).
+3. They will never emit the [`'finish'`][] event.
+4. Writes may be synchronous depending on the what the stream is connected to
+   and whether the system is Windows or Unix:
+   - Files: *synchronous* on Windows and Linux
+   - TTYs (Terminals): *asynchronous* on Windows, *synchronous* on Unix
+   - Pipes (and sockets): *synchronous* on Windows, *asynchronous* on Unix
 
-To check if Node.js is being run in a [TTY][] context, check the `isTTY`
-property on `process.stderr`, `process.stdout`, or `process.stdin`.
+These behaviours are partly for historical reasons, as changing them would
+create backwards incompatibility, but they are also expected by some users.
+
+Synchronous writes avoid problems such as output written with `console.log()` or
+`console.write()` being unexpectedly interleaved, or not written at all if
+`process.exit()` is called before an asynchronous write completes. See
+[`process.exit()`][] for more information.
+
+***Warning***: Synchronous writes block the event loop until the write has
+completed. This can be near instantaneous in the case of output to a file, but
+under high system load, pipes that are not being read at the receiving end, or
+with slow terminals or file systems, its possible for the event loop to be
+blocked often enough and long enough to have severe negative performance
+impacts. This may not be a problem when writing to an interactive terminal
+session, but consider this particularly careful when doing production logging to
+the process output streams.
+
+To check if a stream is connected to a [TTY][] context, check the `isTTY`
+property.
 
 For instance:
 ```console
@@ -1570,7 +1604,6 @@ $ node -p "Boolean(process.stdin.isTTY)"
 true
 $ echo "foo" | node -p "Boolean(process.stdin.isTTY)"
 false
-
 $ node -p "Boolean(process.stdout.isTTY)"
 true
 $ node -p "Boolean(process.stdout.isTTY)" | cat
@@ -1646,6 +1679,10 @@ console.log(`Version: ${process.version}`);
 ## process.versions
 <!-- YAML
 added: v0.2.0
+changes:
+  - version: v4.2.0
+    pr-url: https://github.com/nodejs/node/pull/3102
+    description: The `icu` property is now supported.
 -->
 
 * {Object}
@@ -1724,6 +1761,7 @@ cases:
   the high-order bit, and then contain the value of the signal code.
 
 
+[`'exit'`]: #process_event_exit
 [`'finish'`]: stream.html#stream_event_finish
 [`'message'`]: child_process.html#child_process_event_message
 [`'rejectionHandled'`]: #process_event_rejectionhandled
@@ -1745,13 +1783,14 @@ cases:
 [`promise.catch()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/catch
 [`require.main`]: modules.html#modules_accessing_the_main_module
 [`setTimeout(fn, 0)`]: timers.html#timers_settimeout_callback_delay_args
+[note on process I/O]: process.html#process_a_note_on_process_i_o
 [process_emit_warning]: #process_process_emitwarning_warning_name_ctor
 [process_warning]: #process_event_warning
 [Signal Events]: #process_signal_events
 [Stream compatibility]: stream.html#stream_compatibility_with_older_node_js_versions
 [TTY]: tty.html#tty_tty
-[Writable]: stream.html
-[Readable]: stream.html
+[Writable]: stream.html#stream_writable_streams
+[Readable]: stream.html#stream_readable_streams
 [Child Process]: child_process.html
 [Cluster]: cluster.html
 [`process.exitCode`]: #process_process_exitcode

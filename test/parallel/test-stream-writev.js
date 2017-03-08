@@ -1,5 +1,5 @@
 'use strict';
-require('../common');
+const common = require('../common');
 const assert = require('assert');
 
 const stream = require('stream');
@@ -38,9 +38,7 @@ function test(decode, uncork, multi, next) {
   }
 
   const w = new stream.Writable({ decodeStrings: decode });
-  w._write = function(chunk, e, cb) {
-    assert(false, 'Should not call _write');
-  };
+  w._write = common.mustNotCall('Should not call _write');
 
   const expectChunks = decode ? [
     { encoding: 'buffer',

@@ -17,7 +17,6 @@
 #include "src/base/bits.h"
 #include "src/codegen.h"
 #include "src/globals.h"
-#include "src/type-cache.h"
 #include "src/utils.h"
 
 #define FAIL(node, msg)                                        \
@@ -129,14 +128,13 @@ AsmTyper::AsmTyper(Isolate* isolate, Zone* zone, Script* script,
       script_(script),
       root_(root),
       forward_definitions_(zone),
+      ffi_use_signatures_(zone),
       stdlib_types_(zone),
       stdlib_math_types_(zone),
       module_info_(VariableInfo::ForSpecialSymbol(zone_, kModule)),
-      global_scope_(ZoneHashMap::PointersMatch,
-                    ZoneHashMap::kDefaultHashMapCapacity,
+      global_scope_(ZoneHashMap::kDefaultHashMapCapacity,
                     ZoneAllocationPolicy(zone)),
-      local_scope_(ZoneHashMap::PointersMatch,
-                   ZoneHashMap::kDefaultHashMapCapacity,
+      local_scope_(ZoneHashMap::kDefaultHashMapCapacity,
                    ZoneAllocationPolicy(zone)),
       stack_limit_(isolate->stack_guard()->real_climit()),
       node_types_(zone_),
@@ -330,8 +328,8 @@ AsmTyper::VariableInfo* AsmTyper::ImportLookup(Property* import) {
   return i->second;
 }
 
-AsmTyper::VariableInfo* AsmTyper::Lookup(Variable* variable) {
-  ZoneHashMap* scope = in_function_ ? &local_scope_ : &global_scope_;
+AsmTyper::VariableInfo* AsmTyper::Lookup(Variable* variable) const {
+  const ZoneHashMap* scope = in_function_ ? &local_scope_ : &global_scope_;
   ZoneHashMap::Entry* entry =
       scope->Lookup(variable, ComputePointerHash(variable));
   if (entry == nullptr && in_function_) {
@@ -423,6 +421,8 @@ AsmType* AsmTyper::TypeOf(AstNode* node) const {
 
   return AsmType::None();
 }
+
+AsmType* AsmTyper::TypeOf(Variable* v) const { return Lookup(v)->type(); }
 
 AsmTyper::StandardMember AsmTyper::VariableAsStandardMember(Variable* var) {
   auto* var_info = Lookup(var);
@@ -567,7 +567,7 @@ AsmType* AsmTyper::ValidateModule(FunctionLiteral* fun) {
   module_name_ = fun->name();
 
   // Allowed parameters: Stdlib, FFI, Mem
-  static const uint32_t MaxModuleParameters = 3;
+  static const int MaxModuleParameters = 3;
   if (scope->num_parameters() > MaxModuleParameters) {
     FAIL(fun, "asm.js modules may not have more than three parameters.");
   }
@@ -606,8 +606,10 @@ AsmType* AsmTyper::ValidateModule(FunctionLiteral* fun) {
   if (estatement != nullptr) {
     Assignment* assignment = estatement->expression()->AsAssignment();
     if (assignment != nullptr && assignment->target()->IsVariableProxy() &&
-        assignment->target()->AsVariableProxy()->var()->mode() ==
-            CONST_LEGACY) {
+        assignment->target()
+            ->AsVariableProxy()
+            ->var()
+            ->is_sloppy_function_name()) {
       use_asm_directive = iter.Next();
     }
   }
@@ -645,11 +647,8 @@ AsmType* AsmTyper::ValidateModule(FunctionLiteral* fun) {
     FAIL(current, "Invalid top-level statement in asm.js module.");
   }
 
-  ZoneList<Declaration*>* decls = scope->declarations();
-
-  for (int ii = 0; ii < decls->length(); ++ii) {
-    Declaration* decl = decls->at(ii);
-
+  Declaration::List* decls = scope->declarations();
+  for (Declaration* decl : *decls) {
     if (FunctionDeclaration* fun_decl = decl->AsFunctionDeclaration()) {
       RECURSE(ValidateFunction(fun_decl));
       source_layout.AddFunction(*fun_decl);
@@ -662,9 +661,7 @@ AsmType* AsmTyper::ValidateModule(FunctionLiteral* fun) {
     source_layout.AddTable(*function_table);
   }
 
-  for (int ii = 0; ii < decls->length(); ++ii) {
-    Declaration* decl = decls->at(ii);
-
+  for (Declaration* decl : *decls) {
     if (decl->IsFunctionDeclaration()) {
       continue;
     }
@@ -760,9 +757,15 @@ AsmType* AsmTyper::ValidateGlobalDeclaration(Assignment* assign) {
   bool global_variable = false;
   if (value->IsLiteral() || value->IsCall()) {
     AsmType* type = nullptr;
-    RECURSE(type = VariableTypeAnnotations(value));
+    VariableInfo::Mutability mutability;
+    if (target_variable->mode() == CONST) {
+      mutability = VariableInfo::kConstGlobal;
+    } else {
+      mutability = VariableInfo::kMutableGlobal;
+    }
+    RECURSE(type = VariableTypeAnnotations(value, mutability));
     target_info = new (zone_) VariableInfo(type);
-    target_info->set_mutability(VariableInfo::kMutableGlobal);
+    target_info->set_mutability(mutability);
     global_variable = true;
   } else if (value->IsProperty()) {
     target_info = ImportLookup(value->AsProperty());
@@ -826,6 +829,23 @@ AsmType* AsmTyper::ValidateGlobalDeclaration(Assignment* assign) {
     RECURSE(type = NewHeapView(value->AsCallNew()));
     target_info = new (zone_) VariableInfo(type);
     target_info->set_mutability(VariableInfo::kImmutableGlobal);
+  } else if (auto* proxy = value->AsVariableProxy()) {
+    auto* var_info = Lookup(proxy->var());
+
+    if (var_info == nullptr) {
+      FAIL(value, "Undeclared identifier in global initializer");
+    }
+
+    if (var_info->mutability() != VariableInfo::kConstGlobal) {
+      FAIL(value, "Identifier used to initialize a global must be a const");
+    }
+
+    target_info = new (zone_) VariableInfo(var_info->type());
+    if (target_variable->mode() == CONST) {
+      target_info->set_mutability(VariableInfo::kConstGlobal);
+    } else {
+      target_info->set_mutability(VariableInfo::kMutableGlobal);
+    }
   }
 
   if (target_info == nullptr) {
@@ -997,7 +1017,7 @@ AsmType* AsmTyper::ValidateFunctionTable(Assignment* assign) {
     FAIL(assign, "Identifier redefined (function table name).");
   }
 
-  if (target_info_table->length() != pointers->length()) {
+  if (static_cast<int>(target_info_table->length()) != pointers->length()) {
     FAIL(assign, "Function table size mismatch.");
   }
 
@@ -1051,7 +1071,7 @@ AsmType* AsmTyper::ValidateFunction(FunctionDeclaration* fun_decl) {
     }
     auto* param = proxy->var();
     if (param->location() != VariableLocation::PARAMETER ||
-        param->index() != annotated_parameters) {
+        param->index() != static_cast<int>(annotated_parameters)) {
       // Done with parameters.
       break;
     }
@@ -1073,7 +1093,7 @@ AsmType* AsmTyper::ValidateFunction(FunctionDeclaration* fun_decl) {
     SetTypeOf(expr, type);
   }
 
-  if (annotated_parameters != fun->parameter_count()) {
+  if (static_cast<int>(annotated_parameters) != fun->parameter_count()) {
     FAIL(fun_decl, "Incorrect parameter type annotations.");
   }
 
@@ -1136,7 +1156,7 @@ AsmType* AsmTyper::ValidateFunction(FunctionDeclaration* fun_decl) {
 
   DCHECK(return_type_->IsReturnType());
 
-  for (auto* decl : *fun->scope()->declarations()) {
+  for (Declaration* decl : *fun->scope()->declarations()) {
     auto* var_decl = decl->AsVariableDeclaration();
     if (var_decl == nullptr) {
       FAIL(decl, "Functions may only define inner variables.");
@@ -1509,7 +1529,7 @@ AsmType* AsmTyper::ValidateCompareOperation(CompareOperation* cmp) {
 }
 
 namespace {
-bool IsNegate(BinaryOperation* binop) {
+bool IsInvert(BinaryOperation* binop) {
   if (binop->op() != Token::BIT_XOR) {
     return false;
   }
@@ -1524,7 +1544,7 @@ bool IsNegate(BinaryOperation* binop) {
 }
 
 bool IsUnaryMinus(BinaryOperation* binop) {
-  // *VIOLATION* The parser replaces uses of +x with x*1.0.
+  // *VIOLATION* The parser replaces uses of -x with x*-1.
   if (binop->op() != Token::MUL) {
     return false;
   }
@@ -1570,7 +1590,7 @@ AsmType* AsmTyper::ValidateBinaryOperation(BinaryOperation* expr) {
       }
 
       if (IsUnaryMinus(expr)) {
-        // *VIOLATION* the parser converts -x to x * -1.0.
+        // *VIOLATION* the parser converts -x to x * -1.
         AsmType* left_type;
         RECURSE(left_type = ValidateExpression(expr->left()));
         SetTypeOf(expr->right(), left_type);
@@ -1595,11 +1615,11 @@ AsmType* AsmTyper::ValidateBinaryOperation(BinaryOperation* expr) {
     case Token::BIT_AND:
       return ValidateBitwiseANDExpression(expr);
     case Token::BIT_XOR:
-      if (IsNegate(expr)) {
+      if (IsInvert(expr)) {
         auto* left = expr->left();
         auto* left_as_binop = left->AsBinaryOperation();
 
-        if (left_as_binop != nullptr && IsNegate(left_as_binop)) {
+        if (left_as_binop != nullptr && IsInvert(left_as_binop)) {
           // This is the special ~~ operator.
           AsmType* left_type;
           RECURSE(left_type = ValidateExpression(left_as_binop->left()));
@@ -1640,7 +1660,15 @@ AsmType* AsmTyper::ValidateCommaExpression(BinaryOperation* comma) {
   auto* right = comma->right();
   AsmType* right_type = nullptr;
   if (auto* right_as_call = right->AsCall()) {
-    RECURSE(right_type = ValidateCall(AsmType::Void(), right_as_call));
+    RECURSE(right_type = ValidateFloatCoercion(right_as_call));
+    if (right_type != AsmType::Float()) {
+      // right_type == nullptr <-> right_as_call is not a call to fround.
+      DCHECK(right_type == nullptr);
+      RECURSE(right_type = ValidateCall(AsmType::Void(), right_as_call));
+      // Unnanotated function call to something that's not fround must be a call
+      // to a void function.
+      DCHECK_EQ(right_type, AsmType::Void());
+    }
   } else {
     RECURSE(right_type = ValidateExpression(right));
   }
@@ -1660,13 +1688,19 @@ AsmType* AsmTyper::ValidateNumericLiteral(Literal* literal) {
     return AsmType::Double();
   }
 
+  // The parser collapses expressions like !0 and !123 to true/false.
+  // We therefore need to permit these as alternate versions of 0 / 1.
+  if (literal->raw_value()->IsTrue() || literal->raw_value()->IsFalse()) {
+    return AsmType::Int();
+  }
+
   uint32_t value;
   if (!literal->value()->ToUint32(&value)) {
     int32_t value;
     if (!literal->value()->ToInt32(&value)) {
       FAIL(literal, "Integer literal is out of range.");
     }
-    // *VIOLATION* Not really a violation, but rather a different in the
+    // *VIOLATION* Not really a violation, but rather a difference in
     // validation. The spec handles -NumericLiteral in ValidateUnaryExpression,
     // but V8's AST represents the negative literals as Literals.
     return AsmType::Signed();
@@ -2305,9 +2339,20 @@ AsmType* AsmTyper::ValidateCall(AsmType* return_type, Call* call) {
       FAIL(call, "Calling something that's not a function.");
     }
 
-    if (callee_type->AsFFIType() != nullptr &&
-        return_type == AsmType::Float()) {
-      FAIL(call, "Foreign functions can't return float.");
+    if (callee_type->AsFFIType() != nullptr) {
+      if (return_type == AsmType::Float()) {
+        FAIL(call, "Foreign functions can't return float.");
+      }
+      // Record FFI use signature, since the asm->wasm translator must know
+      // all uses up-front.
+      ffi_use_signatures_.emplace_back(
+          FFIUseSignature(call_var_proxy->var(), zone_));
+      FFIUseSignature* sig = &ffi_use_signatures_.back();
+      sig->return_type_ = return_type;
+      sig->arg_types_.reserve(args.size());
+      for (size_t i = 0; i < args.size(); ++i) {
+        sig->arg_types_.emplace_back(args[i]);
+      }
     }
 
     if (!callee_type->CanBeInvokedWith(return_type, args)) {
@@ -2657,12 +2702,31 @@ AsmType* AsmTyper::ReturnTypeAnnotations(ReturnStatement* statement) {
     FAIL(statement, "Invalid literal in return statement.");
   }
 
+  if (auto* proxy = ret_expr->AsVariableProxy()) {
+    auto* var_info = Lookup(proxy->var());
+
+    if (var_info == nullptr) {
+      FAIL(statement, "Undeclared identifier in return statement.");
+    }
+
+    if (var_info->mutability() != VariableInfo::kConstGlobal) {
+      FAIL(statement, "Identifier in return statement is not const.");
+    }
+
+    if (!var_info->type()->IsReturnType()) {
+      FAIL(statement, "Constant in return must be signed, float, or double.");
+    }
+
+    return var_info->type();
+  }
+
   FAIL(statement, "Invalid return type expression.");
 }
 
 // 5.4 VariableTypeAnnotations
 // Also used for 5.5 GlobalVariableTypeAnnotations
-AsmType* AsmTyper::VariableTypeAnnotations(Expression* initializer) {
+AsmType* AsmTyper::VariableTypeAnnotations(
+    Expression* initializer, VariableInfo::Mutability mutability_type) {
   if (auto* literal = initializer->AsLiteral()) {
     if (literal->raw_value()->ContainsDot()) {
       SetTypeOf(initializer, AsmType::Double());
@@ -2670,24 +2734,50 @@ AsmType* AsmTyper::VariableTypeAnnotations(Expression* initializer) {
     }
     int32_t i32;
     uint32_t u32;
+
+    AsmType* initializer_type = nullptr;
     if (literal->value()->ToUint32(&u32)) {
       if (u32 > LargestFixNum) {
-        SetTypeOf(initializer, AsmType::Unsigned());
+        initializer_type = AsmType::Unsigned();
+        SetTypeOf(initializer, initializer_type);
       } else {
-        SetTypeOf(initializer, AsmType::FixNum());
+        initializer_type = AsmType::FixNum();
+        SetTypeOf(initializer, initializer_type);
+        initializer_type = AsmType::Signed();
       }
     } else if (literal->value()->ToInt32(&i32)) {
-      SetTypeOf(initializer, AsmType::Signed());
+      initializer_type = AsmType::Signed();
+      SetTypeOf(initializer, initializer_type);
     } else {
       FAIL(initializer, "Invalid type annotation - forbidden literal.");
     }
-    return AsmType::Int();
+    if (mutability_type != VariableInfo::kConstGlobal) {
+      return AsmType::Int();
+    }
+    return initializer_type;
+  }
+
+  if (auto* proxy = initializer->AsVariableProxy()) {
+    auto* var_info = Lookup(proxy->var());
+
+    if (var_info == nullptr) {
+      FAIL(initializer,
+           "Undeclared identifier in variable declaration initializer.");
+    }
+
+    if (var_info->mutability() != VariableInfo::kConstGlobal) {
+      FAIL(initializer,
+           "Identifier in variable declaration initializer must be const.");
+    }
+
+    SetTypeOf(initializer, var_info->type());
+    return var_info->type();
   }
 
   auto* call = initializer->AsCall();
   if (call == nullptr) {
     FAIL(initializer,
-         "Invalid variable initialization - it should be a literal, or "
+         "Invalid variable initialization - it should be a literal, const, or "
          "fround(literal).");
   }
 
@@ -2703,10 +2793,13 @@ AsmType* AsmTyper::VariableTypeAnnotations(Expression* initializer) {
          "to fround.");
   }
 
-  if (!src_expr->raw_value()->ContainsDot()) {
-    FAIL(initializer,
-         "Invalid float type annotation - expected literal argument to be a "
-         "floating point literal.");
+  // Float constants must contain dots in local, but not in globals.
+  if (mutability_type == VariableInfo::kLocal) {
+    if (!src_expr->raw_value()->ContainsDot()) {
+      FAIL(initializer,
+           "Invalid float type annotation - expected literal argument to be a "
+           "floating point literal.");
+    }
   }
 
   return AsmType::Float();

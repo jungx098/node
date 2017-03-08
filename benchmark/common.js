@@ -128,6 +128,14 @@ Benchmark.prototype.http = function(options, cb) {
 
 Benchmark.prototype._run = function() {
   const self = this;
+  // If forked, report to the parent.
+  if (process.send) {
+    process.send({
+      type: 'config',
+      name: this.name,
+      queueLength: this.queue.length
+    });
+  }
 
   (function recursive(queueIndex) {
     const config = self.queue[queueIndex];
@@ -217,20 +225,7 @@ Benchmark.prototype.report = function(rate, elapsed) {
     name: this.name,
     conf: this.config,
     rate: rate,
-    time: elapsed[0] + elapsed[1] / 1e9
+    time: elapsed[0] + elapsed[1] / 1e9,
+    type: 'report'
   });
-};
-
-exports.v8ForceOptimization = function(method) {
-  if (typeof method !== 'function')
-    return;
-
-  const v8 = require('v8');
-  v8.setFlagsFromString('--allow_natives_syntax');
-
-  const args = Array.prototype.slice.call(arguments, 1);
-  method.apply(null, args);
-  eval('%OptimizeFunctionOnNextCall(method)');
-  method.apply(null, args);
-  return eval('%GetOptimizationStatus(method)');
 };

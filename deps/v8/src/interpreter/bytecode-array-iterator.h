@@ -5,6 +5,7 @@
 #ifndef V8_INTERPRETER_BYTECODE_ARRAY_ITERATOR_H_
 #define V8_INTERPRETER_BYTECODE_ARRAY_ITERATOR_H_
 
+#include "src/globals.h"
 #include "src/handles.h"
 #include "src/interpreter/bytecode-register.h"
 #include "src/interpreter/bytecodes.h"
@@ -15,7 +16,7 @@ namespace v8 {
 namespace internal {
 namespace interpreter {
 
-class BytecodeArrayIterator {
+class V8_EXPORT_PRIVATE BytecodeArrayIterator {
  public:
   explicit BytecodeArrayIterator(Handle<BytecodeArray> bytecode_array);
 
@@ -31,6 +32,7 @@ class BytecodeArrayIterator {
   }
 
   uint32_t GetFlagOperand(int operand_index) const;
+  uint32_t GetUnsignedImmediateOperand(int operand_index) const;
   int32_t GetImmediateOperand(int operand_index) const;
   uint32_t GetIndexOperand(int operand_index) const;
   uint32_t GetRegisterCountOperand(int operand_index) const;

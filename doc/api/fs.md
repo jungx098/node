@@ -121,8 +121,8 @@ The object itself emits these events:
 added: v0.5.8
 -->
 
-* `eventType` {String} The type of fs change
-* `filename` {String | Buffer} The filename that changed (if relevant/available)
+* `eventType` {string} The type of fs change
+* `filename` {string | Buffer} The filename that changed (if relevant/available)
 
 Emitted when something changes in a watched directory or file.
 See more details in [`fs.watch()`][].
@@ -164,6 +164,14 @@ added: v0.1.93
 
 `ReadStream` is a [Readable Stream][].
 
+### Event: 'close'
+<!-- YAML
+added: v0.1.93
+-->
+
+Emitted when the `ReadStream`'s underlying file descriptor has been closed
+using the `fs.close()` method.
+
 ### Event: 'open'
 <!-- YAML
 added: v0.1.93
@@ -172,14 +180,6 @@ added: v0.1.93
 * `fd` {Integer} Integer file descriptor used by the ReadStream.
 
 Emitted when the ReadStream's file is opened.
-
-### Event: 'close'
-<!-- YAML
-added: v0.1.93
--->
-
-Emitted when the `ReadStream`'s underlying file descriptor has been closed
-using the `fs.close()` method.
 
 ### readStream.bytesRead
 <!-- YAML
@@ -278,6 +278,14 @@ added: v0.1.93
 
 `WriteStream` is a [Writable Stream][].
 
+### Event: 'close'
+<!-- YAML
+added: v0.1.93
+-->
+
+Emitted when the `WriteStream`'s underlying file descriptor has been closed
+using the `fs.close()` method.
+
 ### Event: 'open'
 <!-- YAML
 added: v0.1.93
@@ -286,14 +294,6 @@ added: v0.1.93
 * `fd` {Integer} Integer file descriptor used by the WriteStream.
 
 Emitted when the WriteStream's file is opened.
-
-### Event: 'close'
-<!-- YAML
-added: v0.1.93
--->
-
-Emitted when the `WriteStream`'s underlying file descriptor has been closed
-using the `fs.close()` method.
 
 ### writeStream.bytesWritten
 <!-- YAML
@@ -318,7 +318,7 @@ argument to `fs.createWriteStream()`. If `path` is passed as a string, then
 added: v0.11.15
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 * `callback` {Function}
 
@@ -439,7 +439,7 @@ process.
 added: v0.11.15
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 
 Synchronous version of [`fs.access()`][]. This throws if any accessibility
@@ -448,14 +448,25 @@ checks fail, and does nothing otherwise.
 ## fs.appendFile(file, data[, options], callback)
 <!-- YAML
 added: v0.6.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7831
+    description: The passed `options` object will never be modified.
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Number} filename or file descriptor
-* `data` {String | Buffer}
+* `file` {string | Buffer | Number} filename or file descriptor
+* `data` {string | Buffer}
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `'utf8'`
+  * `encoding` {string | Null} default = `'utf8'`
   * `mode` {Integer} default = `0o666`
-  * `flag` {String} default = `'a'`
+  * `flag` {string} default = `'a'`
 * `callback` {Function}
 
 Asynchronously append data to a file, creating the file if it does not yet exist.
@@ -484,23 +495,35 @@ automatically._
 ## fs.appendFileSync(file, data[, options])
 <!-- YAML
 added: v0.6.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7831
+    description: The passed `options` object will never be modified.
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Number} filename or file descriptor
-* `data` {String | Buffer}
+* `file` {string | Buffer | Number} filename or file descriptor
+* `data` {string | Buffer}
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `'utf8'`
+  * `encoding` {string | Null} default = `'utf8'`
   * `mode` {Integer} default = `0o666`
-  * `flag` {String} default = `'a'`
+  * `flag` {string} default = `'a'`
 
 The synchronous version of [`fs.appendFile()`][]. Returns `undefined`.
 
 ## fs.chmod(path, mode, callback)
 <!-- YAML
 added: v0.1.30
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 * `callback` {Function}
 
@@ -512,7 +535,7 @@ to the completion callback.
 added: v0.6.7
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 
 Synchronous chmod(2). Returns `undefined`.
@@ -520,9 +543,14 @@ Synchronous chmod(2). Returns `undefined`.
 ## fs.chown(path, uid, gid, callback)
 <!-- YAML
 added: v0.1.97
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `uid` {Integer}
 * `gid` {Integer}
 * `callback` {Function}
@@ -535,7 +563,7 @@ to the completion callback.
 added: v0.1.97
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `uid` {Integer}
 * `gid` {Integer}
 
@@ -544,6 +572,11 @@ Synchronous chown(2). Returns `undefined`.
 ## fs.close(fd, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -570,15 +603,22 @@ operations. The specific constants currently defined are described in
 ## fs.createReadStream(path[, options])
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7831
+    description: The passed `options` object will never be modified.
+  - version: v2.3.0
+    pr-url: https://github.com/nodejs/node/pull/1845
+    description: The passed `options` object can be a string now.
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `flags` {String}
-  * `encoding` {String}
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `flags` {string}
+  * `encoding` {string}
   * `fd` {Integer}
   * `mode` {Integer}
-  * `autoClose` {Boolean}
+  * `autoClose` {boolean}
   * `start` {Integer}
   * `end` {Integer}
 
@@ -631,15 +671,25 @@ If `options` is a string, then it specifies the encoding.
 ## fs.createWriteStream(path[, options])
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7831
+    description: The passed `options` object will never be modified.
+  - version: v5.5.0
+    pr-url: https://github.com/nodejs/node/pull/3679
+    description: The `autoClose` option is supported now.
+  - version: v2.3.0
+    pr-url: https://github.com/nodejs/node/pull/1845
+    description: The passed `options` object can be a string now.
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `flags` {String}
-  * `defaultEncoding` {String}
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `flags` {string}
+  * `defaultEncoding` {string}
   * `fd` {Integer}
   * `mode` {Integer}
-  * `autoClose` {Boolean}
+  * `autoClose` {boolean}
   * `start` {Integer}
 
 Returns a new [`WriteStream`][] object. (See [Writable Stream][]).
@@ -683,7 +733,7 @@ deprecated: v1.0.0
 
 > Stability: 0 - Deprecated: Use [`fs.stat()`][] or [`fs.access()`][] instead.
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `callback` {Function}
 
 Test whether or not the given path exists by checking with the file system.
@@ -784,7 +834,7 @@ process.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 
 Synchronous version of [`fs.exists()`][].
 Returns `true` if the file exists, `false` otherwise.
@@ -797,6 +847,11 @@ a callback.)
 ## fs.fchmod(fd, mode, callback)
 <!-- YAML
 added: v0.4.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -819,6 +874,11 @@ Synchronous fchmod(2). Returns `undefined`.
 ## fs.fchown(fd, uid, gid, callback)
 <!-- YAML
 added: v0.4.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -843,6 +903,11 @@ Synchronous fchown(2). Returns `undefined`.
 ## fs.fdatasync(fd, callback)
 <!-- YAML
 added: v0.1.96
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -863,6 +928,11 @@ Synchronous fdatasync(2). Returns `undefined`.
 ## fs.fstat(fd, callback)
 <!-- YAML
 added: v0.1.95
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -884,6 +954,11 @@ Synchronous fstat(2). Returns an instance of [`fs.Stats`][].
 ## fs.fsync(fd, callback)
 <!-- YAML
 added: v0.1.96
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -904,6 +979,11 @@ Synchronous fsync(2). Returns `undefined`.
 ## fs.ftruncate(fd, len, callback)
 <!-- YAML
 added: v0.8.6
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -967,6 +1047,15 @@ Synchronous ftruncate(2). Returns `undefined`.
 ## fs.futimes(fd, atime, mtime, callback)
 <!-- YAML
 added: v0.4.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v4.1.0
+    pr-url: https://github.com/nodejs/node/pull/2387
+    description: Numeric strings, `NaN` and `Infinity` are now allowed
+                 time specifiers.
 -->
 
 * `fd` {Integer}
@@ -980,6 +1069,11 @@ descriptor.
 ## fs.futimesSync(fd, atime, mtime)
 <!-- YAML
 added: v0.4.2
+changes:
+  - version: v4.1.0
+    pr-url: https://github.com/nodejs/node/pull/2387
+    description: Numeric strings, `NaN` and `Infinity` are now allowed
+                 time specifiers.
 -->
 
 * `fd` {Integer}
@@ -991,9 +1085,14 @@ Synchronous version of [`fs.futimes()`][]. Returns `undefined`.
 ## fs.lchmod(path, mode, callback)
 <!-- YAML
 deprecated: v0.4.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 * `callback` {Function}
 
@@ -1007,7 +1106,7 @@ Only available on Mac OS X.
 deprecated: v0.4.7
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 
 Synchronous lchmod(2). Returns `undefined`.
@@ -1015,9 +1114,14 @@ Synchronous lchmod(2). Returns `undefined`.
 ## fs.lchown(path, uid, gid, callback)
 <!-- YAML
 deprecated: v0.4.7
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `uid` {Integer}
 * `gid` {Integer}
 * `callback` {Function}
@@ -1030,7 +1134,7 @@ to the completion callback.
 deprecated: v0.4.7
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `uid` {Integer}
 * `gid` {Integer}
 
@@ -1039,10 +1143,15 @@ Synchronous lchown(2). Returns `undefined`.
 ## fs.link(existingPath, newPath, callback)
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `existingPath` {String | Buffer}
-* `newPath` {String | Buffer}
+* `existingPath` {string | Buffer}
+* `newPath` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous link(2). No arguments other than a possible exception are given to
@@ -1053,17 +1162,22 @@ the completion callback.
 added: v0.1.31
 -->
 
-* `existingPath` {String | Buffer}
-* `newPath` {String | Buffer}
+* `existingPath` {string | Buffer}
+* `newPath` {string | Buffer}
 
 Synchronous link(2). Returns `undefined`.
 
 ## fs.lstat(path, callback)
 <!-- YAML
 added: v0.1.30
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous lstat(2). The callback gets two arguments `(err, stats)` where
@@ -1076,16 +1190,21 @@ not the file that it refers to.
 added: v0.1.30
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 
 Synchronous lstat(2). Returns an instance of [`fs.Stats`][].
 
 ## fs.mkdir(path[, mode], callback)
 <!-- YAML
 added: v0.1.8
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 * `callback` {Function}
 
@@ -1097,7 +1216,7 @@ to the completion callback. `mode` defaults to `0o777`.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `mode` {Integer}
 
 Synchronous mkdir(2). Returns `undefined`.
@@ -1105,11 +1224,19 @@ Synchronous mkdir(2). Returns `undefined`.
 ## fs.mkdtemp(prefix[, options], callback)
 <!-- YAML
 added: v5.10.0
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v6.2.1
+    pr-url: https://github.com/nodejs/node/pull/6828
+    description: The `callback` parameter is optional now.
 -->
 
-* `prefix` {String}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `prefix` {string}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 * `callback` {Function}
 
 Creates a unique temporary directory.
@@ -1169,9 +1296,9 @@ fs.mkdtemp(tmpDir + path.sep, (err, folder) => {
 added: v5.10.0
 -->
 
-* `prefix` {String}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `prefix` {string}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 
 The synchronous version of [`fs.mkdtemp()`][]. Returns the created
 folder path.
@@ -1184,8 +1311,8 @@ object with an `encoding` property specifying the character encoding to use.
 added: v0.0.2
 -->
 
-* `path` {String | Buffer}
-* `flags` {String | Number}
+* `path` {string | Buffer}
+* `flags` {string | Number}
 * `mode` {Integer}
 * `callback` {Function}
 
@@ -1268,8 +1395,8 @@ fs.open('<directory>', 'a+', (err, fd) => {
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
-* `flags` {String | Number}
+* `path` {string | Buffer}
+* `flags` {string | Number}
 * `mode` {Integer}
 
 Synchronous version of [`fs.open()`][]. Returns an integer representing the file
@@ -1278,10 +1405,17 @@ descriptor.
 ## fs.read(fd, buffer, offset, length, position, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.4.0
+    pr-url: https://github.com/nodejs/node/pull/10382
+    description: The `buffer` parameter can now be a `Uint8Array`.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/4518
+    description: The `length` parameter can now be `0`.
 -->
 
 * `fd` {Integer}
-* `buffer` {String | Buffer | Uint8Array}
+* `buffer` {string | Buffer | Uint8Array}
 * `offset` {Integer}
 * `length` {Integer}
 * `position` {Integer}
@@ -1303,11 +1437,16 @@ The callback is given the three arguments, `(err, bytesRead, buffer)`.
 ## fs.readdir(path[, options], callback)
 <!-- YAML
 added: v0.1.8
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 * `callback` {Function}
 
 Asynchronous readdir(3).  Reads the contents of a directory.
@@ -1324,9 +1463,9 @@ the filenames returned will be passed as `Buffer` objects.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 
 Synchronous readdir(3). Returns an array of filenames excluding `'.'` and
 `'..'`.
@@ -1339,12 +1478,24 @@ the filenames returned will be passed as `Buffer` objects.
 ## fs.readFile(file[, options], callback)
 <!-- YAML
 added: v0.1.29
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v5.1.0
+    pr-url: https://github.com/nodejs/node/pull/3740
+    description: The `callback` will always be called with `null` as the `error`
+                 parameter in case of success.
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Integer} filename or file descriptor
+* `file` {string | Buffer | Integer} filename or file descriptor
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `null`
-  * `flag` {String} default = `'r'`
+  * `encoding` {string | Null} default = `null`
+  * `flag` {string} default = `'r'`
 * `callback` {Function}
 
 Asynchronously reads the entire contents of a file. Example:
@@ -1375,12 +1526,16 @@ automatically._
 ## fs.readFileSync(file[, options])
 <!-- YAML
 added: v0.1.8
+changes:
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Integer} filename or file descriptor
+* `file` {string | Buffer | Integer} filename or file descriptor
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `null`
-  * `flag` {String} default = `'r'`
+  * `encoding` {string | Null} default = `null`
+  * `flag` {string} default = `'r'`
 
 Synchronous version of [`fs.readFile`][]. Returns the contents of the `file`.
 
@@ -1390,11 +1545,16 @@ string. Otherwise it returns a buffer.
 ## fs.readlink(path[, options], callback)
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 * `callback` {Function}
 
 Asynchronous readlink(2). The callback gets two arguments `(err,
@@ -1410,9 +1570,9 @@ the link path returned will be passed as a `Buffer` object.
 added: v0.1.31
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 
 Synchronous readlink(2). Returns the symbolic link's string value.
 
@@ -1424,10 +1584,14 @@ the link path returned will be passed as a `Buffer` object.
 ## fs.readSync(fd, buffer, offset, length, position)
 <!-- YAML
 added: v0.1.21
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/4518
+    description: The `length` parameter can now be `0`.
 -->
 
 * `fd` {Integer}
-* `buffer` {String | Buffer | Uint8Array}
+* `buffer` {string | Buffer | Uint8Array}
 * `offset` {Integer}
 * `length` {Integer}
 * `position` {Integer}
@@ -1437,11 +1601,23 @@ Synchronous version of [`fs.read()`][]. Returns the number of `bytesRead`.
 ## fs.realpath(path[, options], callback)
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v6.4.0
+    pr-url: https://github.com/nodejs/node/pull/7899
+    description: Calling `realpath` now works again for various edge cases
+                 on Windows.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/3594
+    description: The `cache` parameter was removed.
 -->
 
-* `path` {String | Buffer}
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer}
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 * `callback` {Function}
 
 Asynchronous realpath(3). The `callback` gets two arguments `(err,
@@ -1457,11 +1633,19 @@ the path returned will be passed as a `Buffer` object.
 ## fs.realpathSync(path[, options])
 <!-- YAML
 added: v0.1.31
+changes:
+  - version: v6.4.0
+    pr-url: https://github.com/nodejs/node/pull/7899
+    description: Calling `realpathSync` now works again for various edge cases
+                 on Windows.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/3594
+    description: The `cache` parameter was removed.
 -->
 
-* `path` {String | Buffer};
-* `options` {String | Object}
-  * `encoding` {String} default = `'utf8'`
+* `path` {string | Buffer};
+* `options` {string | Object}
+  * `encoding` {string} default = `'utf8'`
 
 Synchronous realpath(3). Returns the resolved path.
 
@@ -1475,10 +1659,15 @@ will be passed as a `Buffer` object.
 ## fs.rename(oldPath, newPath, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `oldPath` {String | Buffer}
-* `newPath` {String | Buffer}
+* `oldPath` {string | Buffer}
+* `newPath` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous rename(2). No arguments other than a possible exception are given
@@ -1489,17 +1678,22 @@ to the completion callback.
 added: v0.1.21
 -->
 
-* `oldPath` {String | Buffer}
-* `newPath` {String | Buffer}
+* `oldPath` {string | Buffer}
+* `newPath` {string | Buffer}
 
 Synchronous rename(2). Returns `undefined`.
 
 ## fs.rmdir(path, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous rmdir(2). No arguments other than a possible exception are given
@@ -1510,16 +1704,21 @@ to the completion callback.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 
 Synchronous rmdir(2). Returns `undefined`.
 
 ## fs.stat(path, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous stat(2). The callback gets two arguments `(err, stats)` where
@@ -1540,7 +1739,7 @@ is recommended.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 
 Synchronous stat(2). Returns an instance of [`fs.Stats`][].
 
@@ -1549,9 +1748,9 @@ Synchronous stat(2). Returns an instance of [`fs.Stats`][].
 added: v0.1.31
 -->
 
-* `target` {String | Buffer}
-* `path` {String | Buffer}
-* `type` {String}
+* `target` {string | Buffer}
+* `path` {string | Buffer}
+* `type` {string}
 * `callback` {Function}
 
 Asynchronous symlink(2). No arguments other than a possible exception are given
@@ -1574,18 +1773,23 @@ It creates a symbolic link named "new-port" that points to "foo".
 added: v0.1.31
 -->
 
-* `target` {String | Buffer}
-* `path` {String | Buffer}
-* `type` {String}
+* `target` {string | Buffer}
+* `path` {string | Buffer}
+* `type` {string}
 
 Synchronous symlink(2). Returns `undefined`.
 
 ## fs.truncate(path, len, callback)
 <!-- YAML
 added: v0.8.6
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `len` {Integer} default = `0`
 * `callback` {Function}
 
@@ -1598,7 +1802,7 @@ first argument. In this case, `fs.ftruncate()` is called.
 added: v0.8.6
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `len` {Integer} default = `0`
 
 Synchronous truncate(2). Returns `undefined`. A file descriptor can also be
@@ -1607,9 +1811,14 @@ passed as the first argument. In this case, `fs.ftruncateSync()` is called.
 ## fs.unlink(path, callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `callback` {Function}
 
 Asynchronous unlink(2). No arguments other than a possible exception are given
@@ -1620,7 +1829,7 @@ to the completion callback.
 added: v0.1.21
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 
 Synchronous unlink(2). Returns `undefined`.
 
@@ -1629,7 +1838,7 @@ Synchronous unlink(2). Returns `undefined`.
 added: v0.1.31
 -->
 
-* `filename` {String | Buffer}
+* `filename` {string | Buffer}
 * `listener` {Function}
 
 Stop watching for changes on `filename`. If `listener` is specified, only that
@@ -1646,9 +1855,18 @@ when possible._
 ## fs.utimes(path, atime, mtime, callback)
 <!-- YAML
 added: v0.4.2
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v4.1.0
+    pr-url: https://github.com/nodejs/node/pull/2387
+    description: Numeric strings, `NaN` and `Infinity` are now allowed
+                 time specifiers.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `atime` {Integer}
 * `mtime` {Integer}
 * `callback` {Function}
@@ -1668,9 +1886,14 @@ follow these rules:
 ## fs.utimesSync(path, atime, mtime)
 <!-- YAML
 added: v0.4.2
+changes:
+  - version: v4.1.0
+    pr-url: https://github.com/nodejs/node/pull/2387
+    description: Numeric strings, `NaN` and `Infinity` are now allowed
+                 time specifiers.
 -->
 
-* `path` {String | Buffer}
+* `path` {string | Buffer}
 * `atime` {Integer}
 * `mtime` {Integer}
 
@@ -1679,17 +1902,21 @@ Synchronous version of [`fs.utimes()`][]. Returns `undefined`.
 ## fs.watch(filename[, options][, listener])
 <!-- YAML
 added: v0.5.10
+changes:
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7831
+    description: The passed `options` object will never be modified.
 -->
 
-* `filename` {String | Buffer}
-* `options` {String | Object}
-  * `persistent` {Boolean} Indicates whether the process should continue to run
+* `filename` {string | Buffer}
+* `options` {string | Object}
+  * `persistent` {boolean} Indicates whether the process should continue to run
     as long as files are being watched. default = `true`
-  * `recursive` {Boolean} Indicates whether all subdirectories should be
+  * `recursive` {boolean} Indicates whether all subdirectories should be
     watched, or only the current directory. The applies when a directory is
     specified, and only on supported platforms (See [Caveats][]). default =
     `false`
-  * `encoding` {String} Specifies the character encoding to be used for the
+  * `encoding` {string} Specifies the character encoding to be used for the
      filename passed to the listener. default = `'utf8'`
 * `listener` {Function}
 
@@ -1752,6 +1979,13 @@ a new inode. The watch will emit an event for the delete but will continue
 watching the *original* inode. Events for the new inode will not be emitted.
 This is expected behavior.
 
+In AIX, save and close of a file being watched causes two notifications -
+one for adding new content, and one for truncation. Moreover, save and
+close operations on some platforms cause inode changes that force watch
+operations to become invalid and ineffective. AIX retains inode for the
+lifetime of a file, that way though this is different from Linux / OS X,
+this improves the usability of file watching. This is expected behavior.
+
 #### Filename Argument
 
 <!--type=misc-->
@@ -1777,9 +2011,9 @@ fs.watch('somedir', (eventType, filename) => {
 added: v0.1.31
 -->
 
-* `filename` {String | Buffer}
+* `filename` {string | Buffer}
 * `options` {Object}
-  * `persistent` {Boolean}
+  * `persistent` {boolean}
   * `interval` {Integer}
 * `listener` {Function}
 
@@ -1821,6 +2055,17 @@ _Note: [`fs.watch()`][] is more efficient than `fs.watchFile` and
 ## fs.write(fd, buffer[, offset[, length[, position]]], callback)
 <!-- YAML
 added: v0.0.2
+changes:
+  - version: v7.4.0
+    pr-url: https://github.com/nodejs/node/pull/10382
+    description: The `buffer` parameter can now be a `Uint8Array`.
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/7856
+    description: The `offset` and `length` parameters are optional now.
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
@@ -1853,12 +2098,20 @@ the end of the file.
 ## fs.write(fd, string[, position[, encoding]], callback)
 <!-- YAML
 added: v0.11.5
+changes:
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/7856
+    description: The `position` parameter is optional now.
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
 -->
 
 * `fd` {Integer}
-* `string` {String}
+* `string` {string}
 * `position` {Integer}
-* `encoding` {String}
+* `encoding` {string}
 * `callback` {Function}
 
 Write `string` to the file specified by `fd`.  If `string` is not a string, then
@@ -1889,14 +2142,25 @@ the end of the file.
 ## fs.writeFile(file, data[, options], callback)
 <!-- YAML
 added: v0.1.29
+changes:
+  - version: v7.4.0
+    pr-url: https://github.com/nodejs/node/pull/10382
+    description: The `data` parameter can now be a `Uint8Array`.
+  - version: v7.0.0
+    pr-url: https://github.com/nodejs/node/pull/7897
+    description: The `callback` parameter is no longer optional. Not passing
+                 it will emit a deprecation warning.
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Integer} filename or file descriptor
-* `data` {String | Buffer | Uint8Array}
+* `file` {string | Buffer | Integer} filename or file descriptor
+* `data` {string | Buffer | Uint8Array}
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `'utf8'`
+  * `encoding` {string | Null} default = `'utf8'`
   * `mode` {Integer} default = `0o666`
-  * `flag` {String} default = `'w'`
+  * `flag` {string} default = `'w'`
 * `callback` {Function}
 
 Asynchronously writes data to a file, replacing the file if it already exists.
@@ -1932,20 +2196,34 @@ automatically._
 ## fs.writeFileSync(file, data[, options])
 <!-- YAML
 added: v0.1.29
+changes:
+  - version: v7.4.0
+    pr-url: https://github.com/nodejs/node/pull/10382
+    description: The `data` parameter can now be a `Uint8Array`.
+  - version: v5.0.0
+    pr-url: https://github.com/nodejs/node/pull/3163
+    description: The `file` parameter can be a file descriptor now.
 -->
 
-* `file` {String | Buffer | Integer} filename or file descriptor
-* `data` {String | Buffer | Uint8Array}
+* `file` {string | Buffer | Integer} filename or file descriptor
+* `data` {string | Buffer | Uint8Array}
 * `options` {Object | String}
-  * `encoding` {String | Null} default = `'utf8'`
+  * `encoding` {string | Null} default = `'utf8'`
   * `mode` {Integer} default = `0o666`
-  * `flag` {String} default = `'w'`
+  * `flag` {string} default = `'w'`
 
 The synchronous version of [`fs.writeFile()`][]. Returns `undefined`.
 
 ## fs.writeSync(fd, buffer[, offset[, length[, position]]])
 <!-- YAML
 added: v0.1.21
+changes:
+  - version: v7.4.0
+    pr-url: https://github.com/nodejs/node/pull/10382
+    description: The `buffer` parameter can now be a `Uint8Array`.
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/7856
+    description: The `offset` and `length` parameters are optional now.
 -->
 
 * `fd` {Integer}
@@ -1957,12 +2235,16 @@ added: v0.1.21
 ## fs.writeSync(fd, string[, position[, encoding]])
 <!-- YAML
 added: v0.11.5
+changes:
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/7856
+    description: The `position` parameter is optional now.
 -->
 
 * `fd` {Integer}
-* `string` {String}
+* `string` {string}
 * `position` {Integer}
-* `encoding` {String}
+* `encoding` {string}
 
 Synchronous versions of [`fs.write()`][]. Returns the number of bytes written.
 
@@ -2224,3 +2506,4 @@ The following constants are meant for use with the [`fs.Stats`][] object's
 [`ReadDirectoryChangesW`]: https://msdn.microsoft.com/en-us/library/windows/desktop/aa365465%28v=vs.85%29.aspx
 [`AHAFS`]: https://www.ibm.com/developerworks/aix/library/au-aix_event_infrastructure/
 [Common System Errors]: errors.html#errors_common_system_errors
+[`Uint8Array`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Uint8Array

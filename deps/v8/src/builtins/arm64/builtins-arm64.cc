@@ -278,7 +278,7 @@ void Builtins::Generate_NumberConstructor_ConstructStub(MacroAssembler* masm) {
     __ Ldr(x2, MemOperand(jssp, x0, LSL, kPointerSizeLog2));
     __ B(&done);
     __ Bind(&no_arguments);
-    __ Mov(x2, Smi::FromInt(0));
+    __ Mov(x2, Smi::kZero);
     __ Bind(&done);
   }
 
@@ -379,10 +379,9 @@ void Builtins::Generate_StringConstructor(MacroAssembler* masm) {
   __ Bind(&to_string);
   {
     FrameScope scope(masm, StackFrame::MANUAL);
-    ToStringStub stub(masm->isolate());
     __ SmiTag(x2);
     __ EnterBuiltinFrame(cp, x1, x2);
-    __ CallStub(&stub);
+    __ Call(masm->isolate()->builtins()->ToString(), RelocInfo::CODE_TARGET);
     __ LeaveBuiltinFrame(cp, x1, x2);
     __ SmiUntag(x2);
   }
@@ -442,12 +441,11 @@ void Builtins::Generate_StringConstructor_ConstructStub(MacroAssembler* masm) {
     __ Bind(&convert);
     {
       FrameScope scope(masm, StackFrame::MANUAL);
-      ToStringStub stub(masm->isolate());
       __ SmiTag(x6);
       __ EnterBuiltinFrame(cp, x1, x6);
       __ Push(x3);
       __ Move(x0, x2);
-      __ CallStub(&stub);
+      __ Call(masm->isolate()->builtins()->ToString(), RelocInfo::CODE_TARGET);
       __ Move(x2, x0);
       __ Pop(x3);
       __ LeaveBuiltinFrame(cp, x1, x6);
@@ -537,14 +535,14 @@ void Builtins::Generate_InOptimizationQueue(MacroAssembler* masm) {
   GenerateTailCallToSharedCode(masm);
 }
 
-static void Generate_JSConstructStubHelper(MacroAssembler* masm,
-                                           bool is_api_function,
-                                           bool create_implicit_receiver,
-                                           bool check_derived_construct) {
+namespace {
+
+void Generate_JSConstructStubHelper(MacroAssembler* masm, bool is_api_function,
+                                    bool create_implicit_receiver,
+                                    bool check_derived_construct) {
   // ----------- S t a t e -------------
   //  -- x0     : number of arguments
   //  -- x1     : constructor function
-  //  -- x2     : allocation site or undefined
   //  -- x3     : new target
   //  -- lr     : return address
   //  -- cp     : context pointer
@@ -562,14 +560,11 @@ static void Generate_JSConstructStubHelper(MacroAssembler* masm,
     // Preserve the four incoming parameters on the stack.
     Register argc = x0;
     Register constructor = x1;
-    Register allocation_site = x2;
     Register new_target = x3;
 
     // Preserve the incoming parameters on the stack.
-    __ AssertUndefinedOrAllocationSite(allocation_site, x10);
-    __ Push(cp);
     __ SmiTag(argc);
-    __ Push(allocation_site, argc);
+    __ Push(cp, argc);
 
     if (create_implicit_receiver) {
       // Allocate the new receiver object.
@@ -704,6 +699,8 @@ static void Generate_JSConstructStubHelper(MacroAssembler* masm,
   }
   __ Ret();
 }
+
+}  // namespace
 
 void Builtins::Generate_JSConstructStubGeneric(MacroAssembler* masm) {
   Generate_JSConstructStubHelper(masm, false, true, false);
@@ -1065,6 +1062,17 @@ void Builtins::Generate_InterpreterEntryTrampoline(MacroAssembler* masm) {
   __ Cmp(x0, Operand(masm->CodeObject()));  // Self-reference to this code.
   __ B(ne, &switch_to_different_code_kind);
 
+  // Increment invocation count for the function.
+  __ Ldr(x11, FieldMemOperand(x1, JSFunction::kLiteralsOffset));
+  __ Ldr(x11, FieldMemOperand(x11, LiteralsArray::kFeedbackVectorOffset));
+  __ Ldr(x10, FieldMemOperand(x11, TypeFeedbackVector::kInvocationCountIndex *
+                                           kPointerSize +
+                                       TypeFeedbackVector::kHeaderSize));
+  __ Add(x10, x10, Operand(Smi::FromInt(1)));
+  __ Str(x10, FieldMemOperand(x11, TypeFeedbackVector::kInvocationCountIndex *
+                                           kPointerSize +
+                                       TypeFeedbackVector::kHeaderSize));
+
   // Check function data field is actually a BytecodeArray object.
   if (FLAG_debug_code) {
     __ AssertNotSmi(kInterpreterBytecodeArrayRegister,
@@ -1146,29 +1154,48 @@ void Builtins::Generate_InterpreterEntryTrampoline(MacroAssembler* masm) {
   __ Jump(x7);
 }
 
-void Builtins::Generate_InterpreterMarkBaselineOnReturn(MacroAssembler* masm) {
-  // Save the function and context for call to CompileBaseline.
-  __ ldr(x1, MemOperand(fp, StandardFrameConstants::kFunctionOffset));
-  __ ldr(kContextRegister,
-         MemOperand(fp, StandardFrameConstants::kContextOffset));
+static void Generate_StackOverflowCheck(MacroAssembler* masm, Register num_args,
+                                        Register scratch,
+                                        Label* stack_overflow) {
+  // Check the stack for overflow.
+  // We are not trying to catch interruptions (e.g. debug break and
+  // preemption) here, so the "real stack limit" is checked.
+  Label enough_stack_space;
+  __ LoadRoot(scratch, Heap::kRealStackLimitRootIndex);
+  // Make scratch the space we have left. The stack might already be overflowed
+  // here which will cause scratch to become negative.
+  __ Sub(scratch, jssp, scratch);
+  // Check if the arguments will overflow the stack.
+  __ Cmp(scratch, Operand(num_args, LSL, kPointerSizeLog2));
+  __ B(le, stack_overflow);
+}
 
-  // Leave the frame before recompiling for baseline so that we don't count as
-  // an activation on the stack.
-  LeaveInterpreterFrame(masm, x2);
+static void Generate_InterpreterPushArgs(MacroAssembler* masm,
+                                         Register num_args, Register index,
+                                         Register last_arg, Register stack_addr,
+                                         Register scratch,
+                                         Label* stack_overflow) {
+  // Add a stack check before pushing arguments.
+  Generate_StackOverflowCheck(masm, num_args, scratch, stack_overflow);
 
-  {
-    FrameScope frame_scope(masm, StackFrame::INTERNAL);
-    // Push return value.
-    __ push(x0);
+  __ Mov(scratch, num_args);
+  __ lsl(scratch, scratch, kPointerSizeLog2);
+  __ sub(last_arg, index, scratch);
 
-    // Push function as argument and compile for baseline.
-    __ push(x1);
-    __ CallRuntime(Runtime::kCompileBaseline);
+  // Set stack pointer and where to stop.
+  __ Mov(stack_addr, jssp);
+  __ Claim(scratch, 1);
 
-    // Restore return value.
-    __ pop(x0);
-  }
-  __ Ret();
+  // Push the arguments.
+  Label loop_header, loop_check;
+  __ B(&loop_check);
+  __ Bind(&loop_header);
+  // TODO(rmcilroy): Push two at a time once we ensure we keep stack aligned.
+  __ Ldr(scratch, MemOperand(index, -kPointerSize, PostIndex));
+  __ Str(scratch, MemOperand(stack_addr, -kPointerSize, PreIndex));
+  __ Bind(&loop_check);
+  __ Cmp(index, last_arg);
+  __ B(gt, &loop_header);
 }
 
 // static
@@ -1182,24 +1209,13 @@ void Builtins::Generate_InterpreterPushArgsAndCallImpl(
   //          they are to be pushed onto the stack.
   //  -- x1 : the target to call (can be any Object).
   // -----------------------------------
+  Label stack_overflow;
 
-  // Find the address of the last argument.
-  __ add(x3, x0, Operand(1));  // Add one for receiver.
-  __ lsl(x3, x3, kPointerSizeLog2);
-  __ sub(x4, x2, x3);
+  // Add one for the receiver.
+  __ add(x3, x0, Operand(1));
 
-  // Push the arguments.
-  Label loop_header, loop_check;
-  __ Mov(x5, jssp);
-  __ Claim(x3, 1);
-  __ B(&loop_check);
-  __ Bind(&loop_header);
-  // TODO(rmcilroy): Push two at a time once we ensure we keep stack aligned.
-  __ Ldr(x3, MemOperand(x2, -kPointerSize, PostIndex));
-  __ Str(x3, MemOperand(x5, -kPointerSize, PreIndex));
-  __ Bind(&loop_check);
-  __ Cmp(x2, x4);
-  __ B(gt, &loop_header);
+  // Push the arguments. x2, x4, x5, x6 will be modified.
+  Generate_InterpreterPushArgs(masm, x3, x2, x4, x5, x6, &stack_overflow);
 
   // Call the target.
   if (function_type == CallableType::kJSFunction) {
@@ -1212,50 +1228,90 @@ void Builtins::Generate_InterpreterPushArgsAndCallImpl(
                                               tail_call_mode),
             RelocInfo::CODE_TARGET);
   }
+
+  __ bind(&stack_overflow);
+  {
+    __ TailCallRuntime(Runtime::kThrowStackOverflow);
+    __ Unreachable();
+  }
 }
 
 // static
-void Builtins::Generate_InterpreterPushArgsAndConstruct(MacroAssembler* masm) {
+void Builtins::Generate_InterpreterPushArgsAndConstructImpl(
+    MacroAssembler* masm, CallableType construct_type) {
   // ----------- S t a t e -------------
   // -- x0 : argument count (not including receiver)
   // -- x3 : new target
   // -- x1 : constructor to call
-  // -- x2 : address of the first argument
+  // -- x2 : allocation site feedback if available, undefined otherwise
+  // -- x4 : address of the first argument
   // -----------------------------------
-
-  // Find the address of the last argument.
-  __ add(x5, x0, Operand(1));  // Add one for receiver (to be constructed).
-  __ lsl(x5, x5, kPointerSizeLog2);
-
-  // Set stack pointer and where to stop.
-  __ Mov(x6, jssp);
-  __ Claim(x5, 1);
-  __ sub(x4, x6, x5);
+  Label stack_overflow;
 
   // Push a slot for the receiver.
-  __ Str(xzr, MemOperand(x6, -kPointerSize, PreIndex));
+  __ Push(xzr);
 
-  Label loop_header, loop_check;
-  // Push the arguments.
-  __ B(&loop_check);
-  __ Bind(&loop_header);
-  // TODO(rmcilroy): Push two at a time once we ensure we keep stack aligned.
-  __ Ldr(x5, MemOperand(x2, -kPointerSize, PostIndex));
-  __ Str(x5, MemOperand(x6, -kPointerSize, PreIndex));
-  __ Bind(&loop_check);
-  __ Cmp(x6, x4);
-  __ B(gt, &loop_header);
+  // Push the arguments. x5, x4, x6, x7 will be modified.
+  Generate_InterpreterPushArgs(masm, x0, x4, x5, x6, x7, &stack_overflow);
 
-  // Call the constructor with x0, x1, and x3 unmodified.
-  __ Jump(masm->isolate()->builtins()->Construct(), RelocInfo::CODE_TARGET);
+  __ AssertUndefinedOrAllocationSite(x2, x6);
+  if (construct_type == CallableType::kJSFunction) {
+    __ AssertFunction(x1);
+
+    // Tail call to the function-specific construct stub (still in the caller
+    // context at this point).
+    __ Ldr(x4, FieldMemOperand(x1, JSFunction::kSharedFunctionInfoOffset));
+    __ Ldr(x4, FieldMemOperand(x4, SharedFunctionInfo::kConstructStubOffset));
+    __ Add(x4, x4, Code::kHeaderSize - kHeapObjectTag);
+    __ Br(x4);
+  } else {
+    DCHECK_EQ(construct_type, CallableType::kAny);
+    // Call the constructor with x0, x1, and x3 unmodified.
+    __ Jump(masm->isolate()->builtins()->Construct(), RelocInfo::CODE_TARGET);
+  }
+
+  __ bind(&stack_overflow);
+  {
+    __ TailCallRuntime(Runtime::kThrowStackOverflow);
+    __ Unreachable();
+  }
 }
 
-void Builtins::Generate_InterpreterEnterBytecodeDispatch(MacroAssembler* masm) {
+// static
+void Builtins::Generate_InterpreterPushArgsAndConstructArray(
+    MacroAssembler* masm) {
+  // ----------- S t a t e -------------
+  // -- x0 : argument count (not including receiver)
+  // -- x1 : target to call verified to be Array function
+  // -- x2 : allocation site feedback if available, undefined otherwise.
+  // -- x3 : address of the first argument
+  // -----------------------------------
+  Label stack_overflow;
+
+  __ add(x4, x0, Operand(1));  // Add one for the receiver.
+
+  // Push the arguments. x3, x5, x6, x7 will be modified.
+  Generate_InterpreterPushArgs(masm, x4, x3, x5, x6, x7, &stack_overflow);
+
+  // Array constructor expects constructor in x3. It is same as call target.
+  __ mov(x3, x1);
+
+  ArrayConstructorStub stub(masm->isolate());
+  __ TailCallStub(&stub);
+
+  __ bind(&stack_overflow);
+  {
+    __ TailCallRuntime(Runtime::kThrowStackOverflow);
+    __ Unreachable();
+  }
+}
+
+static void Generate_InterpreterEnterBytecode(MacroAssembler* masm) {
   // Set the return address to the correct point in the interpreter entry
   // trampoline.
   Smi* interpreter_entry_return_pc_offset(
       masm->isolate()->heap()->interpreter_entry_return_pc_offset());
-  DCHECK_NE(interpreter_entry_return_pc_offset, Smi::FromInt(0));
+  DCHECK_NE(interpreter_entry_return_pc_offset, Smi::kZero);
   __ LoadObject(x1, masm->isolate()->builtins()->InterpreterEntryTrampoline());
   __ Add(lr, x1, Operand(interpreter_entry_return_pc_offset->value() +
                          Code::kHeaderSize - kHeapObjectTag));
@@ -1291,6 +1347,29 @@ void Builtins::Generate_InterpreterEnterBytecodeDispatch(MacroAssembler* masm) {
   __ Jump(ip0);
 }
 
+void Builtins::Generate_InterpreterEnterBytecodeAdvance(MacroAssembler* masm) {
+  // Advance the current bytecode offset stored within the given interpreter
+  // stack frame. This simulates what all bytecode handlers do upon completion
+  // of the underlying operation.
+  __ Ldr(x1, MemOperand(fp, InterpreterFrameConstants::kBytecodeArrayFromFp));
+  __ Ldr(x2, MemOperand(fp, InterpreterFrameConstants::kBytecodeOffsetFromFp));
+  __ Ldr(cp, MemOperand(fp, StandardFrameConstants::kContextOffset));
+  {
+    FrameScope scope(masm, StackFrame::INTERNAL);
+    __ Push(kInterpreterAccumulatorRegister, x1, x2);
+    __ CallRuntime(Runtime::kInterpreterAdvanceBytecodeOffset);
+    __ Mov(x2, x0);  // Result is the new bytecode offset.
+    __ Pop(kInterpreterAccumulatorRegister);
+  }
+  __ Str(x2, MemOperand(fp, InterpreterFrameConstants::kBytecodeOffsetFromFp));
+
+  Generate_InterpreterEnterBytecode(masm);
+}
+
+void Builtins::Generate_InterpreterEnterBytecodeDispatch(MacroAssembler* masm) {
+  Generate_InterpreterEnterBytecode(masm);
+}
+
 void Builtins::Generate_CompileLazy(MacroAssembler* masm) {
   // ----------- S t a t e -------------
   //  -- x0 : argument count (preserved for callee)
@@ -1299,7 +1378,6 @@ void Builtins::Generate_CompileLazy(MacroAssembler* masm) {
   // -----------------------------------
   // First lookup code, maybe we don't need to compile!
   Label gotta_call_runtime;
-  Label maybe_call_runtime;
   Label try_shared;
   Label loop_top, loop_bottom;
 
@@ -1357,13 +1435,10 @@ void Builtins::Generate_CompileLazy(MacroAssembler* masm) {
          FieldMemOperand(array_pointer,
                          SharedFunctionInfo::kOffsetToPreviousCachedCode));
   __ Ldr(entry, FieldMemOperand(entry, WeakCell::kValueOffset));
-  __ JumpIfSmi(entry, &maybe_call_runtime);
+  __ JumpIfSmi(entry, &try_shared);
 
   // Found literals and code. Get them into the closure and return.
   __ Add(entry, entry, Operand(Code::kHeaderSize - kHeapObjectTag));
-
-  Label install_optimized_code_and_tailcall;
-  __ Bind(&install_optimized_code_and_tailcall);
   __ Str(entry, FieldMemOperand(closure, JSFunction::kCodeEntryOffset));
   __ RecordWriteCodeEntryField(closure, entry, x5);
 
@@ -1394,22 +1469,16 @@ void Builtins::Generate_CompileLazy(MacroAssembler* masm) {
   // We found neither literals nor code.
   __ B(&gotta_call_runtime);
 
-  __ Bind(&maybe_call_runtime);
-
-  // Last possibility. Check the context free optimized code map entry.
-  __ Ldr(entry, FieldMemOperand(map, FixedArray::kHeaderSize +
-                                         SharedFunctionInfo::kSharedCodeIndex));
-  __ Ldr(entry, FieldMemOperand(entry, WeakCell::kValueOffset));
-  __ JumpIfSmi(entry, &try_shared);
-
-  // Store code entry in the closure.
-  __ Add(entry, entry, Operand(Code::kHeaderSize - kHeapObjectTag));
-  __ B(&install_optimized_code_and_tailcall);
-
   __ Bind(&try_shared);
-  // Is the full code valid?
   __ Ldr(entry,
          FieldMemOperand(closure, JSFunction::kSharedFunctionInfoOffset));
+  // Is the shared function marked for tier up?
+  __ Ldrb(temp, FieldMemOperand(
+                    entry, SharedFunctionInfo::kMarkedForTierUpByteOffset));
+  __ TestAndBranchIfAnySet(
+      temp, 1 << SharedFunctionInfo::kMarkedForTierUpBitWithinByte,
+      &gotta_call_runtime);
+  // Is the full code valid?
   __ Ldr(entry, FieldMemOperand(entry, SharedFunctionInfo::kCodeOffset));
   __ Ldr(x5, FieldMemOperand(entry, Code::kFlagsOffset));
   __ and_(x5, x5, Operand(Code::KindField::kMask));
@@ -1781,7 +1850,7 @@ static void Generate_OnStackReplacementHelper(MacroAssembler* masm,
 
   // If the code object is null, just return to the caller.
   Label skip;
-  __ CompareAndBranch(x0, Smi::FromInt(0), ne, &skip);
+  __ CompareAndBranch(x0, Smi::kZero, ne, &skip);
   __ Ret();
 
   __ Bind(&skip);
@@ -1817,60 +1886,6 @@ void Builtins::Generate_OnStackReplacement(MacroAssembler* masm) {
 
 void Builtins::Generate_InterpreterOnStackReplacement(MacroAssembler* masm) {
   Generate_OnStackReplacementHelper(masm, true);
-}
-
-// static
-void Builtins::Generate_DatePrototype_GetField(MacroAssembler* masm,
-                                               int field_index) {
-  // ----------- S t a t e -------------
-  //  -- x0      : number of arguments
-  //  -- x1      : function
-  //  -- cp      : context
-  //  -- lr      : return address
-  //  -- jssp[0] : receiver
-  // -----------------------------------
-  ASM_LOCATION("Builtins::Generate_DatePrototype_GetField");
-
-  // 1. Pop receiver into x0 and check that it's actually a JSDate object.
-  Label receiver_not_date;
-  {
-    __ Pop(x0);
-    __ JumpIfSmi(x0, &receiver_not_date);
-    __ JumpIfNotObjectType(x0, x2, x3, JS_DATE_TYPE, &receiver_not_date);
-  }
-
-  // 2. Load the specified date field, falling back to the runtime as necessary.
-  if (field_index == JSDate::kDateValue) {
-    __ Ldr(x0, FieldMemOperand(x0, JSDate::kValueOffset));
-  } else {
-    if (field_index < JSDate::kFirstUncachedField) {
-      Label stamp_mismatch;
-      __ Mov(x1, ExternalReference::date_cache_stamp(masm->isolate()));
-      __ Ldr(x1, MemOperand(x1));
-      __ Ldr(x2, FieldMemOperand(x0, JSDate::kCacheStampOffset));
-      __ Cmp(x1, x2);
-      __ B(ne, &stamp_mismatch);
-      __ Ldr(x0, FieldMemOperand(
-                     x0, JSDate::kValueOffset + field_index * kPointerSize));
-      __ Ret();
-      __ Bind(&stamp_mismatch);
-    }
-    FrameScope scope(masm, StackFrame::INTERNAL);
-    __ Mov(x1, Smi::FromInt(field_index));
-    __ CallCFunction(
-        ExternalReference::get_date_field_function(masm->isolate()), 2);
-  }
-  __ Ret();
-
-  // 3. Raise a TypeError if the receiver is not a date.
-  __ Bind(&receiver_not_date);
-  {
-    FrameScope scope(masm, StackFrame::MANUAL);
-    __ Push(x0);
-    __ Mov(x0, Smi::FromInt(0));
-    __ EnterBuiltinFrame(cp, x1, x0);
-    __ CallRuntime(Runtime::kThrowNotDateError);
-  }
 }
 
 // static
@@ -2162,27 +2177,6 @@ void Builtins::Generate_ReflectConstruct(MacroAssembler* masm) {
   }
 }
 
-static void ArgumentAdaptorStackCheck(MacroAssembler* masm,
-                                      Label* stack_overflow) {
-  // ----------- S t a t e -------------
-  //  -- x0 : actual number of arguments
-  //  -- x1 : function (passed through to callee)
-  //  -- x2 : expected number of arguments
-  //  -- x3 : new target (passed through to callee)
-  // -----------------------------------
-  // Check the stack for overflow.
-  // We are not trying to catch interruptions (e.g. debug break and
-  // preemption) here, so the "real stack limit" is checked.
-  Label enough_stack_space;
-  __ LoadRoot(x10, Heap::kRealStackLimitRootIndex);
-  // Make x10 the space we have left. The stack might already be overflowed
-  // here which will cause x10 to become negative.
-  __ Sub(x10, jssp, x10);
-  // Check if the arguments will overflow the stack.
-  __ Cmp(x10, Operand(x2, LSL, kPointerSizeLog2));
-  __ B(le, stack_overflow);
-}
-
 static void EnterArgumentsAdaptorFrame(MacroAssembler* masm) {
   __ SmiTag(x10, x0);
   __ Mov(x11, Smi::FromInt(StackFrame::ARGUMENTS_ADAPTOR));
@@ -2451,11 +2445,9 @@ void Builtins::Generate_CallFunction(MacroAssembler* masm,
   Label class_constructor;
   __ Ldr(x2, FieldMemOperand(x1, JSFunction::kSharedFunctionInfoOffset));
   __ Ldr(w3, FieldMemOperand(x2, SharedFunctionInfo::kCompilerHintsOffset));
-  __ TestAndBranchIfAnySet(
-      w3, (1 << SharedFunctionInfo::kIsDefaultConstructor) |
-              (1 << SharedFunctionInfo::kIsSubclassConstructor) |
-              (1 << SharedFunctionInfo::kIsBaseConstructor),
-      &class_constructor);
+  __ TestAndBranchIfAnySet(w3, FunctionKind::kClassConstructor
+                                   << SharedFunctionInfo::kFunctionKindShift,
+                           &class_constructor);
 
   // Enter the context of the function; ToObject has to run in the function
   // context, and we also need to take the global proxy from the function
@@ -2507,8 +2499,8 @@ void Builtins::Generate_CallFunction(MacroAssembler* masm,
         __ Push(x0, x1);
         __ Mov(x0, x3);
         __ Push(cp);
-        ToObjectStub stub(masm->isolate());
-        __ CallStub(&stub);
+        __ Call(masm->isolate()->builtins()->ToObject(),
+                RelocInfo::CODE_TARGET);
         __ Pop(cp);
         __ Mov(x3, x0);
         __ Pop(x1, x0);
@@ -2842,7 +2834,7 @@ void Builtins::Generate_AllocateInNewSpace(MacroAssembler* masm) {
   // -----------------------------------
   __ SmiTag(x1);
   __ Push(x1);
-  __ Move(cp, Smi::FromInt(0));
+  __ Move(cp, Smi::kZero);
   __ TailCallRuntime(Runtime::kAllocateInNewSpace);
 }
 
@@ -2856,7 +2848,7 @@ void Builtins::Generate_AllocateInOldSpace(MacroAssembler* masm) {
   __ SmiTag(x1);
   __ Move(x2, Smi::FromInt(AllocateTargetSpace::encode(OLD_SPACE)));
   __ Push(x1, x2);
-  __ Move(cp, Smi::FromInt(0));
+  __ Move(cp, Smi::kZero);
   __ TailCallRuntime(Runtime::kAllocateInTargetSpace);
 }
 
@@ -2869,28 +2861,8 @@ void Builtins::Generate_Abort(MacroAssembler* masm) {
   // -----------------------------------
   MacroAssembler::NoUseRealAbortsScope no_use_real_aborts(masm);
   __ Push(x1);
-  __ Move(cp, Smi::FromInt(0));
+  __ Move(cp, Smi::kZero);
   __ TailCallRuntime(Runtime::kAbort);
-}
-
-// static
-void Builtins::Generate_ToNumber(MacroAssembler* masm) {
-  // The ToNumber stub takes one argument in x0.
-  Label not_smi;
-  __ JumpIfNotSmi(x0, &not_smi);
-  __ Ret();
-  __ Bind(&not_smi);
-
-  Label not_heap_number;
-  __ CompareObjectType(x0, x1, x1, HEAP_NUMBER_TYPE);
-  // x0: receiver
-  // x1: receiver instance type
-  __ B(ne, &not_heap_number);
-  __ Ret();
-  __ Bind(&not_heap_number);
-
-  __ Jump(masm->isolate()->builtins()->NonNumberToNumber(),
-          RelocInfo::CODE_TARGET);
 }
 
 void Builtins::Generate_ArgumentsAdaptorTrampoline(MacroAssembler* masm) {
@@ -2917,7 +2889,7 @@ void Builtins::Generate_ArgumentsAdaptorTrampoline(MacroAssembler* masm) {
 
   {  // Enough parameters: actual >= expected
     EnterArgumentsAdaptorFrame(masm);
-    ArgumentAdaptorStackCheck(masm, &stack_overflow);
+    Generate_StackOverflowCheck(masm, x2, x10, &stack_overflow);
 
     Register copy_start = x10;
     Register copy_end = x11;
@@ -2964,7 +2936,7 @@ void Builtins::Generate_ArgumentsAdaptorTrampoline(MacroAssembler* masm) {
     Register scratch1 = x13, scratch2 = x14;
 
     EnterArgumentsAdaptorFrame(masm);
-    ArgumentAdaptorStackCheck(masm, &stack_overflow);
+    Generate_StackOverflowCheck(masm, x2, x10, &stack_overflow);
 
     __ Lsl(scratch2, argc_expected, kPointerSizeLog2);
     __ Lsl(argc_actual, argc_actual, kPointerSizeLog2);

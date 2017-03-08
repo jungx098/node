@@ -45,22 +45,6 @@ typedef Object* (*F3)(void* p, int p1, int p2, int p3, int p4);
 
 #define __ masm->
 
-
-static byte to_non_zero(int n) {
-  return static_cast<unsigned>(n) % 255 + 1;
-}
-
-
-static bool all_zeroes(const byte* beg, const byte* end) {
-  CHECK(beg);
-  CHECK(beg <= end);
-  while (beg < end) {
-    if (*beg++ != 0)
-      return false;
-  }
-  return true;
-}
-
 TEST(BYTESWAP) {
   DCHECK(kArchVariant == kMips64r6 || kArchVariant == kMips64r2);
   CcTest::InitializeVM();
@@ -144,81 +128,6 @@ TEST(BYTESWAP) {
   CHECK_EQ(static_cast<int64_t>(0xDEFC000000000000), t.r6);
   CHECK_EQ(static_cast<int64_t>(0xC3151AC800000000), t.r7);
 }
-
-TEST(CopyBytes) {
-  CcTest::InitializeVM();
-  Isolate* isolate = CcTest::i_isolate();
-  HandleScope handles(isolate);
-
-  const int data_size = 1 * KB;
-  size_t act_size;
-
-  // Allocate two blocks to copy data between.
-  byte* src_buffer =
-      static_cast<byte*>(v8::base::OS::Allocate(data_size, &act_size, 0));
-  CHECK(src_buffer);
-  CHECK(act_size >= static_cast<size_t>(data_size));
-  byte* dest_buffer =
-      static_cast<byte*>(v8::base::OS::Allocate(data_size, &act_size, 0));
-  CHECK(dest_buffer);
-  CHECK(act_size >= static_cast<size_t>(data_size));
-
-  // Storage for a0 and a1.
-  byte* a0_;
-  byte* a1_;
-
-  MacroAssembler assembler(isolate, NULL, 0,
-                           v8::internal::CodeObjectRequired::kYes);
-  MacroAssembler* masm = &assembler;
-
-  // Code to be generated: The stuff in CopyBytes followed by a store of a0 and
-  // a1, respectively.
-  __ CopyBytes(a0, a1, a2, a3);
-  __ li(a2, Operand(reinterpret_cast<int64_t>(&a0_)));
-  __ li(a3, Operand(reinterpret_cast<int64_t>(&a1_)));
-  __ sd(a0, MemOperand(a2));
-  __ jr(ra);
-  __ sd(a1, MemOperand(a3));
-
-  CodeDesc desc;
-  masm->GetCode(&desc);
-  Handle<Code> code = isolate->factory()->NewCode(
-      desc, Code::ComputeFlags(Code::STUB), Handle<Code>());
-
-  ::F f = FUNCTION_CAST< ::F>(code->entry());
-
-  // Initialise source data with non-zero bytes.
-  for (int i = 0; i < data_size; i++) {
-    src_buffer[i] = to_non_zero(i);
-  }
-
-  const int fuzz = 11;
-
-  for (int size = 0; size < 600; size++) {
-    for (const byte* src = src_buffer; src < src_buffer + fuzz; src++) {
-      for (byte* dest = dest_buffer; dest < dest_buffer + fuzz; dest++) {
-        memset(dest_buffer, 0, data_size);
-        CHECK(dest + size < dest_buffer + data_size);
-        (void)CALL_GENERATED_CODE(isolate, f, reinterpret_cast<int64_t>(src),
-                                  reinterpret_cast<int64_t>(dest), size, 0, 0);
-        // a0 and a1 should point at the first byte after the copied data.
-        CHECK_EQ(src + size, a0_);
-        CHECK_EQ(dest + size, a1_);
-        // Check that we haven't written outside the target area.
-        CHECK(all_zeroes(dest_buffer, dest));
-        CHECK(all_zeroes(dest + size, dest_buffer + data_size));
-        // Check the target area.
-        CHECK_EQ(0, memcmp(src, dest, size));
-      }
-    }
-  }
-
-  // Check that the source data hasn't been clobbered.
-  for (int i = 0; i < data_size; i++) {
-    CHECK(src_buffer[i] == to_non_zero(i));
-  }
-}
-
 
 TEST(LoadConstants) {
   CcTest::InitializeVM();
@@ -1897,6 +1806,70 @@ TEST(Uldc1) {
                              __ Usdc1(f0, MemOperand(a0, out_offset), t0);
                            }));
       }
+    }
+  }
+}
+
+static const std::vector<uint64_t> sltu_test_values() {
+  static const uint64_t kValues[] = {
+      0,
+      1,
+      0x7ffe,
+      0x7fff,
+      0x8000,
+      0x8001,
+      0xfffe,
+      0xffff,
+      0xffffffffffff7ffe,
+      0xffffffffffff7fff,
+      0xffffffffffff8000,
+      0xffffffffffff8001,
+      0xfffffffffffffffe,
+      0xffffffffffffffff,
+  };
+  return std::vector<uint64_t>(&kValues[0], &kValues[arraysize(kValues)]);
+}
+
+template <typename Func>
+bool run_Sltu(uint64_t rs, uint64_t rd, Func GenerateSltuInstructionFunc) {
+  typedef int64_t (*F_CVT)(uint64_t x0, uint64_t x1, int x2, int x3, int x4);
+
+  Isolate* isolate = CcTest::i_isolate();
+  HandleScope scope(isolate);
+  MacroAssembler assm(isolate, nullptr, 0,
+                      v8::internal::CodeObjectRequired::kYes);
+  MacroAssembler* masm = &assm;
+
+  GenerateSltuInstructionFunc(masm, rd);
+  __ jr(ra);
+  __ nop();
+
+  CodeDesc desc;
+  assm.GetCode(&desc);
+  Handle<Code> code = isolate->factory()->NewCode(
+      desc, Code::ComputeFlags(Code::STUB), Handle<Code>());
+
+  F_CVT f = FUNCTION_CAST<F_CVT>(code->entry());
+  int64_t res = reinterpret_cast<int64_t>(
+      CALL_GENERATED_CODE(isolate, f, rs, rd, 0, 0, 0));
+  return res == 1;
+}
+
+TEST(Sltu) {
+  CcTest::InitializeVM();
+
+  FOR_UINT64_INPUTS(i, sltu_test_values) {
+    FOR_UINT64_INPUTS(j, sltu_test_values) {
+      uint64_t rs = *i;
+      uint64_t rd = *j;
+
+      CHECK_EQ(rs < rd, run_Sltu(rs, rd,
+                                 [](MacroAssembler* masm, uint64_t imm) {
+                                   __ Sltu(v0, a0, Operand(imm));
+                                 }));
+      CHECK_EQ(rs < rd,
+               run_Sltu(rs, rd, [](MacroAssembler* masm,
+                                   uint64_t imm) { __ Sltu(v0, a0, a1); }));
     }
   }
 }

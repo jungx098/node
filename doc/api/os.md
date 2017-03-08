@@ -26,6 +26,8 @@ A string constant defining the operating system-specific end-of-line marker:
 added: v0.5.0
 -->
 
+* Returns: {String}
+
 The `os.arch()` method returns a string identifying the operating system CPU
 architecture *for which the Node.js binary was compiled*.
 
@@ -36,6 +38,9 @@ The current possible values are: `'arm'`, `'arm64'`, `'ia32'`, `'mips'`,
 Equivalent to [`process.arch`][].
 
 ## os.constants
+<!-- YAML
+added: v6.3.0
+-->
 
 * {Object}
 
@@ -55,7 +60,7 @@ each CPU/core installed.
 
 The properties included on each object include:
 
-* `model` {String}
+* `model` {string}
 * `speed` {number} (in MHz)
 * `times` {Object}
   * `user` {number} The number of milliseconds the CPU has spent in user mode.
@@ -239,10 +244,10 @@ value is an array of objects that each describe an assigned network address.
 
 The properties available on the assigned network address object include:
 
-* `address` {String} The assigned IPv4 or IPv6 address
-* `netmask` {String} The IPv4 or IPv6 network mask
-* `family` {String} Either `IPv4` or `IPv6`
-* `mac` {String} The MAC address of the network interface
+* `address` {string} The assigned IPv4 or IPv6 address
+* `netmask` {string} The IPv4 or IPv6 network mask
+* `family` {string} Either `IPv4` or `IPv6`
+* `mac` {string} The MAC address of the network interface
 * `internal` {boolean} `true` if the network interface is a loopback or
   similar interface that is not remotely accessible; otherwise `false`
 * `scopeid` {number} The numeric IPv6 scope ID (only specified when `family`
@@ -328,6 +333,11 @@ https://en.wikipedia.org/wiki/Uname#Examples for more information.
 ## os.tmpdir()
 <!-- YAML
 added: v0.9.9
+changes:
+  - version: v2.0.0
+    pr-url: https://github.com/nodejs/node/pull/747
+    description: This function is now cross-platform consistent and no longer
+                 returns a path with a trailing slash on any platform
 -->
 
 * Returns: {String}
@@ -378,7 +388,7 @@ added: v6.0.0
 -->
 
 * `options` {Object}
-  * `encoding` {String} Character encoding used to interpret resulting strings.
+  * `encoding` {string} Character encoding used to interpret resulting strings.
     If `encoding` is set to `'buffer'`, the `username`, `shell`, and `homedir`
     values will be `Buffer` instances. (Default: 'utf8')
 * Returns: {Object}
@@ -399,6 +409,12 @@ The following constants are exported by `os.constants`. **Note:** Not all
 constants will be available on every operating system.
 
 ### Signal Constants
+<!-- YAML
+changes:
+  - version: v5.11.0
+    pr-url: https://github.com/nodejs/node/pull/6093
+    description: Added support for `SIGINFO`.
+-->
 
 The following signal constants are exported by `os.constants.signals`:
 

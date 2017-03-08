@@ -116,7 +116,8 @@ function makeBufferingDataCallback(dataCallback) {
 }
 
 function timeout(message, multiplicator) {
-  return setTimeout(() => common.fail(message), TIMEOUT * (multiplicator || 1));
+  return setTimeout(common.mustNotCall(message),
+                    TIMEOUT * (multiplicator || 1));
 }
 
 const TestSession = function(socket, harness) {
@@ -398,7 +399,7 @@ Harness.prototype.wsHandshake = function(devtoolsUrl, tests, readyCallback) {
       });
     }
     enqueue(tests);
-  }).on('response', () => common.fail('Upgrade was not received'));
+  }).on('response', common.mustNotCall('Upgrade was not received'));
 };
 
 Harness.prototype.runFrontendSession = function(tests) {
@@ -426,9 +427,24 @@ Harness.prototype.expectShutDown = function(errorCode) {
   });
 };
 
-exports.startNodeForInspectorTest = function(callback) {
-  const child = spawn(process.execPath,
-      [ '--inspect-brk', mainScript ]);
+Harness.prototype.kill = function() {
+  return this.enqueue_((callback) => {
+    this.process_.kill();
+    callback();
+  });
+};
+
+exports.startNodeForInspectorTest = function(callback,
+                                             inspectorFlag = '--inspect-brk',
+                                             opt_script_contents) {
+  const args = [inspectorFlag];
+  if (opt_script_contents) {
+    args.push('-e', opt_script_contents);
+  } else {
+    args.push(mainScript);
+  }
+
+  const child = spawn(process.execPath, args);
 
   const timeoutId = timeout('Child process did not start properly', 4);
 

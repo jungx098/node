@@ -33,12 +33,12 @@
 #include "src/base/platform/condition-variable.h"
 #include "src/base/platform/platform.h"
 #include "src/compilation-cache.h"
+#include "src/debug/debug-interface.h"
 #include "src/debug/debug.h"
 #include "src/deoptimizer.h"
 #include "src/frames.h"
 #include "src/utils.h"
 #include "test/cctest/cctest.h"
-
 
 using ::v8::base::Mutex;
 using ::v8::base::LockGuard;
@@ -319,6 +319,11 @@ static void ChangeBreakOnExceptionFromJS(v8::Isolate* isolate, bool caught,
   }
 }
 
+// Change break on exception using the native API call.
+static void ChangeBreakOnExceptionFromAPI(
+    v8::Isolate* isolate, v8::DebugInterface::ExceptionBreakState state) {
+  v8::DebugInterface::ChangeBreakOnException(isolate, state);
+}
 
 // Prepare to step to next break location.
 static void PrepareStep(StepAction step_action) {
@@ -371,8 +376,8 @@ void CheckDebuggerUnloaded(bool check_functions) {
   CHECK(!CcTest::i_isolate()->debug()->debug_info_list_);
 
   // Collect garbage to ensure weak handles are cleared.
-  CcTest::heap()->CollectAllGarbage();
-  CcTest::heap()->CollectAllGarbage(Heap::kMakeHeapIterableMask);
+  CcTest::CollectAllGarbage(i::Heap::kFinalizeIncrementalMarkingMask);
+  CcTest::CollectAllGarbage(Heap::kMakeHeapIterableMask);
 
   // Iterate the head and check that there are no debugger related objects left.
   HeapIterator iterator(CcTest::heap());
@@ -800,10 +805,10 @@ static void DebugEventBreakPointCollectGarbage(
     break_point_hit_count++;
     if (break_point_hit_count % 2 == 0) {
       // Scavenge.
-      CcTest::heap()->CollectGarbage(v8::internal::NEW_SPACE);
+      CcTest::CollectGarbage(v8::internal::NEW_SPACE);
     } else {
       // Mark sweep compact.
-      CcTest::heap()->CollectAllGarbage();
+      CcTest::CollectAllGarbage(i::Heap::kFinalizeIncrementalMarkingMask);
     }
   }
 }
@@ -824,7 +829,7 @@ static void DebugEventBreak(
 
     // Run the garbage collector to enforce heap verification if option
     // --verify-heap is set.
-    CcTest::heap()->CollectGarbage(v8::internal::NEW_SPACE);
+    CcTest::CollectGarbage(v8::internal::NEW_SPACE);
 
     // Set the break flag again to come back here as soon as possible.
     v8::Debug::DebugBreak(CcTest::isolate());
@@ -1217,12 +1222,12 @@ static void CallAndGC(v8::Local<v8::Context> context,
     CHECK_EQ(1 + i * 3, break_point_hit_count);
 
     // Scavenge and call function.
-    CcTest::heap()->CollectGarbage(v8::internal::NEW_SPACE);
+    CcTest::CollectGarbage(v8::internal::NEW_SPACE);
     f->Call(context, recv, 0, NULL).ToLocalChecked();
     CHECK_EQ(2 + i * 3, break_point_hit_count);
 
     // Mark sweep (and perhaps compact) and call function.
-    CcTest::heap()->CollectAllGarbage();
+    CcTest::CollectAllGarbage(i::Heap::kFinalizeIncrementalMarkingMask);
     f->Call(context, recv, 0, NULL).ToLocalChecked();
     CHECK_EQ(3 + i * 3, break_point_hit_count);
   }
@@ -2080,7 +2085,7 @@ TEST(ScriptBreakPointLineTopLevel) {
           ->Get(context, v8_str(env->GetIsolate(), "f"))
           .ToLocalChecked());
 
-  CcTest::heap()->CollectAllGarbage();
+  CcTest::CollectAllGarbage(i::Heap::kFinalizeIncrementalMarkingMask);
 
   SetScriptBreakPointByNameFromJS(env->GetIsolate(), "test.html", 3, -1);
 
@@ -3977,6 +3982,48 @@ TEST(BreakOnException) {
   DebugEventCounterClear();
   MessageCallbackCountClear();
   ChangeBreakOnExceptionFromJS(env->GetIsolate(), true, false);
+  caught->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(1, 0, 0);
+  CHECK(notCaught->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(2, 1, 1);
+  CHECK(notCaughtFinally->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(3, 2, 2);
+  edgeCaseFinally->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(4, 3, 2);
+
+  // No break on exception using native API
+  DebugEventCounterClear();
+  MessageCallbackCountClear();
+  ChangeBreakOnExceptionFromAPI(env->GetIsolate(),
+                                v8::DebugInterface::NoBreakOnException);
+  caught->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(0, 0, 0);
+  CHECK(notCaught->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(0, 0, 1);
+  CHECK(notCaughtFinally->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(0, 0, 2);
+  edgeCaseFinally->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(0, 0, 2);
+
+  // // Break on uncaught exception using native API
+  DebugEventCounterClear();
+  MessageCallbackCountClear();
+  ChangeBreakOnExceptionFromAPI(env->GetIsolate(),
+                                v8::DebugInterface::BreakOnUncaughtException);
+  caught->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(0, 0, 0);
+  CHECK(notCaught->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(1, 1, 1);
+  CHECK(notCaughtFinally->Call(context, env->Global(), 0, NULL).IsEmpty());
+  DebugEventCounterCheck(2, 2, 2);
+  edgeCaseFinally->Call(context, env->Global(), 0, NULL).ToLocalChecked();
+  DebugEventCounterCheck(3, 3, 2);
+
+  // // Break on exception and uncaught exception using native API
+  DebugEventCounterClear();
+  MessageCallbackCountClear();
+  ChangeBreakOnExceptionFromAPI(env->GetIsolate(),
+                                v8::DebugInterface::BreakOnAnyException);
   caught->Call(context, env->Global(), 0, NULL).ToLocalChecked();
   DebugEventCounterCheck(1, 0, 0);
   CHECK(notCaught->Call(context, env->Global(), 0, NULL).IsEmpty());

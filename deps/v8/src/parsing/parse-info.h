@@ -26,12 +26,10 @@ class Utf16CharacterStream;
 class Zone;
 
 // A container for the inputs, configuration options, and outputs of parsing.
-class ParseInfo {
+class V8_EXPORT_PRIVATE ParseInfo {
  public:
   explicit ParseInfo(Zone* zone);
-  ParseInfo(Zone* zone, Handle<JSFunction> function);
   ParseInfo(Zone* zone, Handle<Script> script);
-  // TODO(all) Only used via Debug::FindSharedFunctionInfoInScript, remove?
   ParseInfo(Zone* zone, Handle<SharedFunctionInfo> shared);
 
   ~ParseInfo();
@@ -45,9 +43,7 @@ class ParseInfo {
   void setter(bool val) { SetFlag(flag, val); }
 
   FLAG_ACCESSOR(kToplevel, is_toplevel, set_toplevel)
-  FLAG_ACCESSOR(kLazy, is_lazy, set_lazy)
   FLAG_ACCESSOR(kEval, is_eval, set_eval)
-  FLAG_ACCESSOR(kGlobal, is_global, set_global)
   FLAG_ACCESSOR(kStrictMode, is_strict_mode, set_strict_mode)
   FLAG_ACCESSOR(kNative, is_native, set_native)
   FLAG_ACCESSOR(kModule, is_module, set_module)
@@ -57,6 +53,8 @@ class ParseInfo {
   FLAG_ACCESSOR(kIsNamedExpression, is_named_expression,
                 set_is_named_expression)
   FLAG_ACCESSOR(kCallsEval, calls_eval, set_calls_eval)
+  FLAG_ACCESSOR(kDebug, is_debug, set_is_debug)
+  FLAG_ACCESSOR(kSerializing, will_serialize, set_will_serialize)
 
 #undef FLAG_ACCESSOR
 
@@ -99,6 +97,9 @@ class ParseInfo {
     return compile_options_;
   }
   void set_compile_options(ScriptCompiler::CompileOptions compile_options) {
+    if (compile_options == ScriptCompiler::kConsumeParserCache) {
+      set_allow_lazy_parsing();
+    }
     compile_options_ = compile_options;
   }
 
@@ -148,9 +149,8 @@ class ParseInfo {
 
   // Getters for individual compiler hints.
   bool is_declaration() const;
-  bool is_arrow() const;
-  bool is_async() const;
-  bool is_default_constructor() const;
+  bool requires_class_field_init() const;
+  bool is_class_field_initializer() const;
   FunctionKind function_kind() const;
 
   //--------------------------------------------------------------------------
@@ -159,11 +159,15 @@ class ParseInfo {
   Isolate* isolate() const { return isolate_; }
   Handle<SharedFunctionInfo> shared_info() const { return shared_; }
   Handle<Script> script() const { return script_; }
-  Handle<Context> context() const { return context_; }
+  MaybeHandle<ScopeInfo> maybe_outer_scope_info() const {
+    return maybe_outer_scope_info_;
+  }
   void clear_script() { script_ = Handle<Script>::null(); }
   void set_isolate(Isolate* isolate) { isolate_ = isolate; }
   void set_shared_info(Handle<SharedFunctionInfo> shared) { shared_ = shared; }
-  void set_context(Handle<Context> context) { context_ = context; }
+  void set_outer_scope_info(Handle<ScopeInfo> outer_scope_info) {
+    maybe_outer_scope_info_ = outer_scope_info;
+  }
   void set_script(Handle<Script> script) { script_ = script; }
   //--------------------------------------------------------------------------
 
@@ -178,7 +182,10 @@ class ParseInfo {
   void ReopenHandlesInNewHandleScope() {
     shared_ = Handle<SharedFunctionInfo>(*shared_);
     script_ = Handle<Script>(*script_);
-    context_ = Handle<Context>(*context_);
+    Handle<ScopeInfo> outer_scope_info;
+    if (maybe_outer_scope_info_.ToHandle(&outer_scope_info)) {
+      maybe_outer_scope_info_ = Handle<ScopeInfo>(*outer_scope_info);
+    }
   }
 
 #ifdef DEBUG
@@ -192,16 +199,17 @@ class ParseInfo {
     kToplevel = 1 << 0,
     kLazy = 1 << 1,
     kEval = 1 << 2,
-    kGlobal = 1 << 3,
-    kStrictMode = 1 << 4,
-    kNative = 1 << 5,
-    kParseRestriction = 1 << 6,
-    kModule = 1 << 7,
-    kAllowLazyParsing = 1 << 8,
-    kIsNamedExpression = 1 << 9,
-    kCallsEval = 1 << 10,
+    kStrictMode = 1 << 3,
+    kNative = 1 << 4,
+    kParseRestriction = 1 << 5,
+    kModule = 1 << 6,
+    kAllowLazyParsing = 1 << 7,
+    kIsNamedExpression = 1 << 8,
+    kCallsEval = 1 << 9,
+    kDebug = 1 << 10,
+    kSerializing = 1 << 11,
     // ---------- Output flags --------------------------
-    kAstValueFactoryOwned = 1 << 11
+    kAstValueFactoryOwned = 1 << 12
   };
 
   //------------- Inputs to parsing and scope analysis -----------------------
@@ -224,7 +232,7 @@ class ParseInfo {
   Isolate* isolate_;
   Handle<SharedFunctionInfo> shared_;
   Handle<Script> script_;
-  Handle<Context> context_;
+  MaybeHandle<ScopeInfo> maybe_outer_scope_info_;
 
   //----------- Inputs+Outputs of parsing and scope analysis -----------------
   ScriptData** cached_data_;  // used if available, populated if requested.
