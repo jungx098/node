@@ -11,6 +11,7 @@
 | `lib/child_process` | @bnoordhuis, @cjihrig |
 | `lib/cluster` | @bnoordhuis, @cjihrig, @mcollina |
 | `lib/{crypto,tls,https}` | @nodejs/crypto |
+| `lib/dgram` | @cjihrig, @mcollina |
 | `lib/domains` | @misterdjules |
 | `lib/fs`, `src/{fs|file}` | @nodejs/fs |
 | `lib/internal/url`, `src/node_url` | @nodejs/url |
@@ -24,7 +25,7 @@
 | `src/async-wrap.*` | @trevnorris |
 | `src/node_crypto.*` | @nodejs/crypto |
 | `test/*` | @nodejs/testing |
-| `tools/eslint`, `.eslintrc` | @silverwind, @trott |
+| `tools/eslint`, `.eslintrc` | @not-an-aardvark, @silverwind, @trott |
 | async_hooks | @nodejs/diagnostics |
 | upgrading V8 | @nodejs/v8, @nodejs/post-mortem |
 | upgrading npm | @fishrock123, @MylesBorins |

@@ -24,6 +24,15 @@ assert.strictEqual(
   'Willst du die Blüthe des frühen, die Früchte des späteren Jahres'
 );
 assert.strictEqual(punycode.decode('wgv71a119e'), '日本語');
+assert.throws(() => {
+  punycode.decode(' ');
+}, /^RangeError: Invalid input$/);
+assert.throws(() => {
+  punycode.decode('α-');
+}, /^RangeError: Illegal input >= 0x80 \(not a basic code point\)$/);
+assert.throws(() => {
+  punycode.decode('あ');
+}, /^RangeError: Overflow: input needs wider integers to process$/);
 
 // http://tools.ietf.org/html/rfc3492#section-7.1
 const tests = [
@@ -228,3 +237,9 @@ assert.strictEqual(punycode.ucs2.encode([0xDC00]), '\uDC00');
 assert.strictEqual(punycode.ucs2.encode([0xDC00, 0x61, 0x62]), '\uDC00ab');
 
 assert.strictEqual(errors, 0);
+
+// test map domain
+assert.strictEqual(punycode.toASCII('Bücher@日本語.com'),
+                   'Bücher@xn--wgv71a119e.com');
+assert.strictEqual(punycode.toUnicode('Bücher@xn--wgv71a119e.com'),
+                   'Bücher@日本語.com');

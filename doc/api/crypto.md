@@ -26,7 +26,7 @@ It is possible for Node.js to be built without including support for the
 error being thrown.
 
 ```js
-var crypto;
+let crypto;
 try {
   crypto = require('crypto');
 } catch (err) {
@@ -132,9 +132,9 @@ Example: Using `Cipher` objects as streams:
 const crypto = require('crypto');
 const cipher = crypto.createCipher('aes192', 'a password');
 
-var encrypted = '';
+let encrypted = '';
 cipher.on('readable', () => {
-  var data = cipher.read();
+  const data = cipher.read();
   if (data)
     encrypted += data.toString('hex');
 });
@@ -166,7 +166,7 @@ Example: Using the [`cipher.update()`][] and [`cipher.final()`][] methods:
 const crypto = require('crypto');
 const cipher = crypto.createCipher('aes192', 'a password');
 
-var encrypted = cipher.update('some clear text data', 'utf8', 'hex');
+let encrypted = cipher.update('some clear text data', 'utf8', 'hex');
 encrypted += cipher.final('hex');
 console.log(encrypted);
 // Prints: ca981be48e90867604588e75d04feabb63cc007a8f8ad89b10616ed84d815504
@@ -193,6 +193,8 @@ added: v1.0.0
 When using an authenticated encryption mode (only `GCM` is currently
 supported), the `cipher.setAAD()` method sets the value used for the
 _additional authenticated data_ (AAD) input parameter.
+
+The `cipher.setAAD()` method must be called before [`cipher.update()`][].
 
 Returns `this` for method chaining.
 
@@ -222,13 +224,18 @@ multiple of the cipher's block size or [`cipher.final()`][] will throw an Error.
 Disabling automatic padding is useful for non-standard padding, for instance
 using `0x0` instead of PKCS padding.
 
-The `cipher.setAutoPadding()` method must be called before [`cipher.final()`][].
+The `cipher.setAutoPadding()` method must be called before
+[`cipher.final()`][].
 
 Returns `this` for method chaining.
 
 ### cipher.update(data[, input_encoding][, output_encoding])
 <!-- YAML
 added: v0.1.94
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the cipher with `data`. If the `input_encoding` argument is given,
@@ -269,9 +276,9 @@ Example: Using `Decipher` objects as streams:
 const crypto = require('crypto');
 const decipher = crypto.createDecipher('aes192', 'a password');
 
-var decrypted = '';
+let decrypted = '';
 decipher.on('readable', () => {
-  var data = decipher.read();
+  const data = decipher.read();
   if (data)
     decrypted += data.toString('utf8');
 });
@@ -280,7 +287,7 @@ decipher.on('end', () => {
   // Prints: some clear text data
 });
 
-var encrypted = 'ca981be48e90867604588e75d04feabb63cc007a8f8ad89b10616ed84d815504';
+const encrypted = 'ca981be48e90867604588e75d04feabb63cc007a8f8ad89b10616ed84d815504';
 decipher.write(encrypted, 'hex');
 decipher.end();
 ```
@@ -304,8 +311,8 @@ Example: Using the [`decipher.update()`][] and [`decipher.final()`][] methods:
 const crypto = require('crypto');
 const decipher = crypto.createDecipher('aes192', 'a password');
 
-var encrypted = 'ca981be48e90867604588e75d04feabb63cc007a8f8ad89b10616ed84d815504';
-var decrypted = decipher.update(encrypted, 'hex', 'utf8');
+const encrypted = 'ca981be48e90867604588e75d04feabb63cc007a8f8ad89b10616ed84d815504';
+let decrypted = decipher.update(encrypted, 'hex', 'utf8');
 decrypted += decipher.final('utf8');
 console.log(decrypted);
 // Prints: some clear text data
@@ -327,17 +334,27 @@ than once will result in an error being thrown.
 ### decipher.setAAD(buffer)
 <!-- YAML
 added: v1.0.0
+changes:
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/9398
+    description: This method now returns a reference to `decipher`.
 -->
 
 When using an authenticated encryption mode (only `GCM` is currently
 supported), the `decipher.setAAD()` method sets the value used for the
 _additional authenticated data_ (AAD) input parameter.
 
+The `decipher.setAAD()` method must be called before [`decipher.update()`][].
+
 Returns `this` for method chaining.
 
 ### decipher.setAuthTag(buffer)
 <!-- YAML
 added: v1.0.0
+changes:
+  - version: v7.2.0
+    pr-url: https://github.com/nodejs/node/pull/9398
+    description: This method now returns a reference to `decipher`.
 -->
 
 When using an authenticated encryption mode (only `GCM` is currently
@@ -345,6 +362,9 @@ supported), the `decipher.setAuthTag()` method is used to pass in the
 received _authentication tag_. If no tag is provided, or if the cipher text
 has been tampered with, [`decipher.final()`][] with throw, indicating that the
 cipher text should be discarded due to failed authentication.
+
+The `decipher.setAuthTag()` method must be called before
+[`decipher.final()`][].
 
 Returns `this` for method chaining.
 
@@ -361,13 +381,17 @@ Turning auto padding off will only work if the input data's length is a
 multiple of the ciphers block size.
 
 The `decipher.setAutoPadding()` method must be called before
-[`decipher.update()`][].
+[`decipher.final()`][].
 
 Returns `this` for method chaining.
 
 ### decipher.update(data[, input_encoding][, output_encoding])
 <!-- YAML
 added: v0.1.94
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the decipher with `data`. If the `input_encoding` argument is given,
@@ -402,18 +426,18 @@ const assert = require('assert');
 
 // Generate Alice's keys...
 const alice = crypto.createDiffieHellman(2048);
-const alice_key = alice.generateKeys();
+const aliceKey = alice.generateKeys();
 
 // Generate Bob's keys...
 const bob = crypto.createDiffieHellman(alice.getPrime(), alice.getGenerator());
-const bob_key = bob.generateKeys();
+const bobKey = bob.generateKeys();
 
 // Exchange and generate the secret...
-const alice_secret = alice.computeSecret(bob_key);
-const bob_secret = bob.computeSecret(alice_key);
+const aliceSecret = alice.computeSecret(bobKey);
+const bobSecret = bob.computeSecret(aliceKey);
 
 // OK
-assert.equal(alice_secret.toString('hex'), bob_secret.toString('hex'));
+assert.strictEqual(aliceSecret.toString('hex'), bobSecret.toString('hex'));
 ```
 
 ### diffieHellman.computeSecret(other_public_key[, input_encoding][, output_encoding])
@@ -531,23 +555,27 @@ const assert = require('assert');
 
 // Generate Alice's keys...
 const alice = crypto.createECDH('secp521r1');
-const alice_key = alice.generateKeys();
+const aliceKey = alice.generateKeys();
 
 // Generate Bob's keys...
 const bob = crypto.createECDH('secp521r1');
-const bob_key = bob.generateKeys();
+const bobKey = bob.generateKeys();
 
 // Exchange and generate the secret...
-const alice_secret = alice.computeSecret(bob_key);
-const bob_secret = bob.computeSecret(alice_key);
+const aliceSecret = alice.computeSecret(bobKey);
+const bobSecret = bob.computeSecret(aliceKey);
 
-assert(alice_secret, bob_secret);
+assert.strictEqual(aliceSecret.toString('hex'), bobSecret.toString('hex'));
   // OK
 ```
 
 ### ecdh.computeSecret(other_public_key[, input_encoding][, output_encoding])
 <!-- YAML
 added: v0.11.14
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Computes the shared secret using `other_public_key` as the other
@@ -648,13 +676,14 @@ alice.setPrivateKey(
 );
 
 // Bob uses a newly generated cryptographically strong
-// pseudorandom key pair bob.generateKeys();
+// pseudorandom key pair
+bob.generateKeys();
 
-const alice_secret = alice.computeSecret(bob.getPublicKey(), null, 'hex');
-const bob_secret = bob.computeSecret(alice.getPublicKey(), null, 'hex');
+const aliceSecret = alice.computeSecret(bob.getPublicKey(), null, 'hex');
+const bobSecret = bob.computeSecret(alice.getPublicKey(), null, 'hex');
 
-// alice_secret and bob_secret should be the same shared secret value
-console.log(alice_secret === bob_secret);
+// aliceSecret and bobSecret should be the same shared secret value
+console.log(aliceSecret === bobSecret);
 ```
 
 ## Class: Hash
@@ -680,7 +709,7 @@ const crypto = require('crypto');
 const hash = crypto.createHash('sha256');
 
 hash.on('readable', () => {
-  var data = hash.read();
+  const data = hash.read();
   if (data)
     console.log(data.toString('hex'));
     // Prints:
@@ -730,6 +759,10 @@ called. Multiple calls will cause an error to be thrown.
 ### hash.update(data[, input_encoding])
 <!-- YAML
 added: v0.1.92
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the hash content with the given `data`, the encoding of which
@@ -763,7 +796,7 @@ const crypto = require('crypto');
 const hmac = crypto.createHmac('sha256', 'a secret');
 
 hmac.on('readable', () => {
-  var data = hmac.read();
+  const data = hmac.read();
   if (data)
     console.log(data.toString('hex'));
     // Prints:
@@ -812,6 +845,10 @@ called. Multiple calls to `hmac.digest()` will result in an error being thrown.
 ### hmac.update(data[, input_encoding])
 <!-- YAML
 added: v0.1.94
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the `Hmac` content with the given `data`, the encoding of which
@@ -847,8 +884,8 @@ const sign = crypto.createSign('RSA-SHA256');
 sign.write('some data to sign');
 sign.end();
 
-const private_key = getPrivateKeySomehow();
-console.log(sign.sign(private_key, 'hex'));
+const privateKey = getPrivateKeySomehow();
+console.log(sign.sign(privateKey, 'hex'));
 // Prints: the calculated signature
 ```
 
@@ -860,8 +897,8 @@ const sign = crypto.createSign('RSA-SHA256');
 
 sign.update('some data to sign');
 
-const private_key = getPrivateKeySomehow();
-console.log(sign.sign(private_key, 'hex'));
+const privateKey = getPrivateKeySomehow();
+console.log(sign.sign(privateKey, 'hex'));
 // Prints: the calculated signature
 ```
 
@@ -878,13 +915,14 @@ const sign = crypto.createSign('sha256');
 
 sign.update('some data to sign');
 
-const private_key = '-----BEGIN EC PRIVATE KEY-----\n' +
-        'MHcCAQEEIF+jnWY1D5kbVYDNvxxo/Y+ku2uJPDwS0r/VuPZQrjjVoAoGCCqGSM49\n' +
-        'AwEHoUQDQgAEurOxfSxmqIRYzJVagdZfMMSjRNNhB8i3mXyIMq704m2m52FdfKZ2\n' +
-        'pQhByd5eyj3lgZ7m7jbchtdgyOF8Io/1ng==\n' +
-        '-----END EC PRIVATE KEY-----\n';
+const privateKey =
+`-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIF+jnWY1D5kbVYDNvxxo/Y+ku2uJPDwS0r/VuPZQrjjVoAoGCCqGSM49
+AwEHoUQDQgAEurOxfSxmqIRYzJVagdZfMMSjRNNhB8i3mXyIMq704m2m52FdfKZ2
+pQhByd5eyj3lgZ7m7jbchtdgyOF8Io/1ng==
+-----END EC PRIVATE KEY-----`;
 
-console.log(sign.sign(private_key).toString('hex'));
+console.log(sign.sign(privateKey).toString('hex'));
 ```
 
 ### sign.sign(private_key[, output_format])
@@ -912,6 +950,10 @@ called. Multiple calls to `sign.sign()` will result in an error being thrown.
 ### sign.update(data[, input_encoding])
 <!-- YAML
 added: v0.1.92
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the `Sign` content with the given `data`, the encoding of which
@@ -947,9 +989,9 @@ const verify = crypto.createVerify('RSA-SHA256');
 verify.write('some data to sign');
 verify.end();
 
-const public_key = getPublicKeySomehow();
+const publicKey = getPublicKeySomehow();
 const signature = getSignatureToVerify();
-console.log(verify.verify(public_key, signature));
+console.log(verify.verify(publicKey, signature));
 // Prints: true or false
 ```
 
@@ -961,15 +1003,19 @@ const verify = crypto.createVerify('RSA-SHA256');
 
 verify.update('some data to sign');
 
-const public_key = getPublicKeySomehow();
+const publicKey = getPublicKeySomehow();
 const signature = getSignatureToVerify();
-console.log(verify.verify(public_key, signature));
+console.log(verify.verify(publicKey, signature));
 // Prints: true or false
 ```
 
 ### verifier.update(data[, input_encoding])
 <!-- YAML
 added: v0.1.92
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default `input_encoding` changed from `binary` to `utf8`.
 -->
 
 Updates the `Verify` content with the given `data`, the encoding of which
@@ -1131,6 +1177,11 @@ The `key` is the raw key used by the `algorithm` and `iv` is an
 ### crypto.createDiffieHellman(prime[, prime_encoding][, generator][, generator_encoding])
 <!-- YAML
 added: v0.11.12
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default for the encoding parameters changed
+                 from `binary` to `utf8`.
 -->
 
 Creates a `DiffieHellman` key exchange object using the supplied `prime` and an
@@ -1192,7 +1243,7 @@ const hash = crypto.createHash('sha256');
 
 const input = fs.createReadStream(filename);
 input.on('readable', () => {
-  var data = input.read();
+  const data = input.read();
   if (data)
     hash.update(data);
   else {
@@ -1226,7 +1277,7 @@ const hmac = crypto.createHmac('sha256', 'a secret');
 
 const input = fs.createReadStream(filename);
 input.on('readable', () => {
-  var data = input.read();
+  const data = input.read();
   if (data)
     hmac.update(data);
   else {
@@ -1278,7 +1329,7 @@ Example:
 
 ```js
 const curves = crypto.getCurves();
-console.log(curves); // ['secp256k1', 'secp384r1', ...]
+console.log(curves); // ['Oakley-EC2N-3', 'Oakley-EC2N-4', ...]
 ```
 
 ### crypto.getDiffieHellman(group_name)
@@ -1307,11 +1358,11 @@ const bob = crypto.getDiffieHellman('modp14');
 alice.generateKeys();
 bob.generateKeys();
 
-const alice_secret = alice.computeSecret(bob.getPublicKey(), null, 'hex');
-const bob_secret = bob.computeSecret(alice.getPublicKey(), null, 'hex');
+const aliceSecret = alice.computeSecret(bob.getPublicKey(), null, 'hex');
+const bobSecret = bob.computeSecret(alice.getPublicKey(), null, 'hex');
 
-/* alice_secret and bob_secret should be the same */
-console.log(alice_secret == bob_secret);
+/* aliceSecret and bobSecret should be the same */
+console.log(aliceSecret === bobSecret);
 ```
 
 ### crypto.getHashes()
@@ -1326,12 +1377,24 @@ Example:
 
 ```js
 const hashes = crypto.getHashes();
-console.log(hashes); // ['sha', 'sha1', 'sha1WithRSAEncryption', ...]
+console.log(hashes); // ['DSA', 'DSA-SHA', 'DSA-SHA1', ...]
 ```
 
 ### crypto.pbkdf2(password, salt, iterations, keylen, digest, callback)
 <!-- YAML
 added: v0.5.5
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/11305
+    description: The `digest` parameter is always required now.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/4047
+    description: Calling this function without passing the `digest` parameter
+                 is deprecated now and will emit a warning.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default encoding for `password` if it is a string changed
+                 from `binary` to `utf8`.
 -->
 
 Provides an asynchronous Password-Based Key Derivation Function 2 (PBKDF2)
@@ -1357,7 +1420,7 @@ Example:
 const crypto = require('crypto');
 crypto.pbkdf2('secret', 'salt', 100000, 512, 'sha512', (err, key) => {
   if (err) throw err;
-  console.log(key.toString('hex'));  // 'c5e478d...1469e50'
+  console.log(key.toString('hex'));  // '3745e48...aa39b34'
 });
 ```
 
@@ -1367,6 +1430,15 @@ An array of supported digest functions can be retrieved using
 ### crypto.pbkdf2Sync(password, salt, iterations, keylen, digest)
 <!-- YAML
 added: v0.9.3
+changes:
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/4047
+    description: Calling this function without passing the `digest` parameter
+                 is deprecated now and will emit a warning.
+  - version: v6.0.0
+    pr-url: https://github.com/nodejs/node/pull/5522
+    description: The default encoding for `password` if it is a string changed
+                 from `binary` to `utf8`.
 -->
 
 Provides a synchronous Password-Based Key Derivation Function 2 (PBKDF2)
@@ -1390,7 +1462,7 @@ Example:
 ```js
 const crypto = require('crypto');
 const key = crypto.pbkdf2Sync('secret', 'salt', 100000, 512, 'sha512');
-console.log(key.toString('hex'));  // 'c5e478d...1469e50'
+console.log(key.toString('hex'));  // '3745e48...aa39b34'
 ```
 
 An array of supported digest functions can be retrieved using
@@ -1416,22 +1488,6 @@ keys:
   * `crypto.constants.RSA_PKCS1_OAEP_PADDING`
 
 All paddings are defined in `crypto.constants`.
-
-### crypto.timingSafeEqual(a, b)
-<!-- YAML
-added: v6.6.0
--->
-
-Returns true if `a` is equal to `b`, without leaking timing information that
-would allow an attacker to guess one of the values. This is suitable for
-comparing HMAC digests or secret values like authentication cookies or
-[capability urls](https://www.w3.org/TR/capability-urls/).
-
-`a` and `b` must both be `Buffer`s, and they must have the same length.
-
-**Note**: Use of `crypto.timingSafeEqual` does not guarantee that the
-*surrounding* code is timing-safe. Care should be taken to ensure that the
-surrounding code does not introduce timing vulnerabilities.
 
 ### crypto.privateEncrypt(private_key, buffer)
 <!-- YAML
@@ -1565,6 +1621,22 @@ is a bit field taking one of or a mix of the following flags (defined in
 * `crypto.constants.ENGINE_METHOD_PKEY_ASN1_METHS`
 * `crypto.constants.ENGINE_METHOD_ALL`
 * `crypto.constants.ENGINE_METHOD_NONE`
+
+### crypto.timingSafeEqual(a, b)
+<!-- YAML
+added: v6.6.0
+-->
+
+Returns true if `a` is equal to `b`, without leaking timing information that
+would allow an attacker to guess one of the values. This is suitable for
+comparing HMAC digests or secret values like authentication cookies or
+[capability urls](https://www.w3.org/TR/capability-urls/).
+
+`a` and `b` must both be `Buffer`s, and they must have the same length.
+
+**Note**: Use of `crypto.timingSafeEqual` does not guarantee that the
+*surrounding* code is timing-safe. Care should be taken to ensure that the
+surrounding code does not introduce timing vulnerabilities.
 
 ## Notes
 
@@ -1938,6 +2010,7 @@ the `crypto`, `tls`, and `https` modules and are generally specific to OpenSSL.
 [`crypto.createHash()`]: #crypto_crypto_createhash_algorithm
 [`crypto.createHmac()`]: #crypto_crypto_createhmac_algorithm_key
 [`crypto.createSign()`]: #crypto_crypto_createsign_algorithm
+[`crypto.createVerify()`]: #crypto_crypto_createverify_algorithm
 [`crypto.getCurves()`]: #crypto_crypto_getcurves
 [`crypto.getHashes()`]: #crypto_crypto_gethashes
 [`crypto.pbkdf2()`]: #crypto_crypto_pbkdf2_password_salt_iterations_keylen_digest_callback

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "src/compilation-info.h"
 #include "src/frames-inl.h"
 #include "test/cctest/compiler/function-tester.h"
 
@@ -47,11 +48,9 @@ void InstallAssertInlineCountHelper(v8::Isolate* isolate) {
             .FromJust());
 }
 
-const uint32_t kRestrictedInliningFlags =
-    CompilationInfo::kNativeContextSpecializing;
+const uint32_t kRestrictedInliningFlags = 0;
 
-const uint32_t kInlineFlags = CompilationInfo::kInliningEnabled |
-                              CompilationInfo::kNativeContextSpecializing;
+const uint32_t kInlineFlags = CompilationInfo::kInliningEnabled;
 
 }  // namespace
 

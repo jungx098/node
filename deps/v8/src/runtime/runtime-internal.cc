@@ -100,12 +100,29 @@ RUNTIME_FUNCTION(Runtime_ThrowStackOverflow) {
   return isolate->StackOverflow();
 }
 
+RUNTIME_FUNCTION(Runtime_ThrowTypeError) {
+  HandleScope scope(isolate);
+  DCHECK_LE(1, args.length());
+  CONVERT_SMI_ARG_CHECKED(message_id_smi, 0);
+
+  Handle<Object> undefined = isolate->factory()->undefined_value();
+  Handle<Object> arg0 = (args.length() > 1) ? args.at<Object>(1) : undefined;
+  Handle<Object> arg1 = (args.length() > 2) ? args.at<Object>(2) : undefined;
+  Handle<Object> arg2 = (args.length() > 3) ? args.at<Object>(3) : undefined;
+
+  MessageTemplate::Template message_id =
+      static_cast<MessageTemplate::Template>(message_id_smi);
+
+  THROW_NEW_ERROR_RETURN_FAILURE(isolate,
+                                 NewTypeError(message_id, arg0, arg1, arg2));
+}
+
 RUNTIME_FUNCTION(Runtime_ThrowWasmError) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
   CONVERT_SMI_ARG_CHECKED(message_id, 0);
   CONVERT_SMI_ARG_CHECKED(byte_offset, 1);
-  Handle<Object> error_obj = isolate->factory()->NewError(
+  Handle<Object> error_obj = isolate->factory()->NewWasmRuntimeError(
       static_cast<MessageTemplate::Template>(message_id));
 
   // For wasm traps, the byte offset (a.k.a source position) can not be
@@ -120,18 +137,17 @@ RUNTIME_FUNCTION(Runtime_ThrowWasmError) {
       error, isolate->factory()->stack_trace_symbol());
   // Patch the stack trace (array of <receiver, function, code, position>).
   if (stack_trace_obj->IsJSArray()) {
-    Handle<FixedArray> stack_elements(
-        FixedArray::cast(JSArray::cast(*stack_trace_obj)->elements()));
-    DCHECK_EQ(1, stack_elements->length() % 4);
-    DCHECK(Code::cast(stack_elements->get(3))->kind() == Code::WASM_FUNCTION);
-    DCHECK(stack_elements->get(4)->IsSmi() &&
-           Smi::cast(stack_elements->get(4))->value() >= 0);
-    stack_elements->set(4, Smi::FromInt(-1 - byte_offset));
+    Handle<FrameArray> stack_elements(
+        FrameArray::cast(JSArray::cast(*stack_trace_obj)->elements()));
+    DCHECK(stack_elements->Code(0)->kind() == AbstractCode::WASM_FUNCTION);
+    DCHECK(stack_elements->Offset(0)->value() >= 0);
+    stack_elements->SetOffset(0, Smi::FromInt(-1 - byte_offset));
   }
-  Handle<Object> detailed_stack_trace_obj = JSReceiver::GetDataProperty(
-      error, isolate->factory()->detailed_stack_trace_symbol());
+
   // Patch the detailed stack trace (array of JSObjects with various
   // properties).
+  Handle<Object> detailed_stack_trace_obj = JSReceiver::GetDataProperty(
+      error, isolate->factory()->detailed_stack_trace_symbol());
   if (detailed_stack_trace_obj->IsJSArray()) {
     Handle<FixedArray> stack_elements(
         FixedArray::cast(JSArray::cast(*detailed_stack_trace_obj)->elements()));
@@ -235,8 +251,7 @@ RUNTIME_FUNCTION(Runtime_ThrowIncompatibleMethodReceiver) {
 
 RUNTIME_FUNCTION(Runtime_ThrowInvalidStringLength) {
   HandleScope scope(isolate);
-  THROW_NEW_ERROR_RETURN_FAILURE(
-      isolate, NewRangeError(MessageTemplate::kInvalidStringLength));
+  THROW_NEW_ERROR_RETURN_FAILURE(isolate, NewInvalidStringLengthError());
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowIteratorResultNotAnObject) {
@@ -273,36 +288,6 @@ RUNTIME_FUNCTION(Runtime_ThrowApplyNonFunction) {
 }
 
 
-RUNTIME_FUNCTION(Runtime_PromiseRejectEvent) {
-  DCHECK(args.length() == 3);
-  HandleScope scope(isolate);
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, promise, 0);
-  CONVERT_ARG_HANDLE_CHECKED(Object, value, 1);
-  CONVERT_BOOLEAN_ARG_CHECKED(debug_event, 2);
-  if (debug_event) isolate->debug()->OnPromiseReject(promise, value);
-  Handle<Symbol> key = isolate->factory()->promise_has_handler_symbol();
-  // Do not report if we actually have a handler.
-  if (JSReceiver::GetDataProperty(promise, key)->IsUndefined(isolate)) {
-    isolate->ReportPromiseReject(promise, value,
-                                 v8::kPromiseRejectWithNoHandler);
-  }
-  return isolate->heap()->undefined_value();
-}
-
-
-RUNTIME_FUNCTION(Runtime_PromiseRevokeReject) {
-  DCHECK(args.length() == 1);
-  HandleScope scope(isolate);
-  CONVERT_ARG_HANDLE_CHECKED(JSObject, promise, 0);
-  Handle<Symbol> key = isolate->factory()->promise_has_handler_symbol();
-  // At this point, no revocation has been issued before
-  CHECK(JSReceiver::GetDataProperty(promise, key)->IsUndefined(isolate));
-  isolate->ReportPromiseReject(promise, Handle<Object>(),
-                               v8::kPromiseHandlerAddedAfterReject);
-  return isolate->heap()->undefined_value();
-}
-
-
 RUNTIME_FUNCTION(Runtime_StackGuard) {
   SealHandleScope shs(isolate);
   DCHECK(args.length() == 0);
@@ -330,7 +315,7 @@ RUNTIME_FUNCTION(Runtime_AllocateInNewSpace) {
   CONVERT_SMI_ARG_CHECKED(size, 0);
   CHECK(IsAligned(size, kPointerSize));
   CHECK(size > 0);
-  CHECK(size <= Page::kMaxRegularHeapObjectSize);
+  CHECK(size <= kMaxRegularHeapObjectSize);
   return *isolate->factory()->NewFillerObject(size, false, NEW_SPACE);
 }
 
@@ -342,7 +327,7 @@ RUNTIME_FUNCTION(Runtime_AllocateInTargetSpace) {
   CONVERT_SMI_ARG_CHECKED(flags, 1);
   CHECK(IsAligned(size, kPointerSize));
   CHECK(size > 0);
-  CHECK(size <= Page::kMaxRegularHeapObjectSize);
+  CHECK(size <= kMaxRegularHeapObjectSize);
   bool double_align = AllocateDoubleAlignFlag::decode(flags);
   AllocationSpace space = AllocateTargetSpace::decode(flags);
   return *isolate->factory()->NewFillerObject(size, double_align, space);
@@ -404,10 +389,10 @@ bool ComputeLocation(Isolate* isolate, MessageLocation* target) {
 Handle<String> RenderCallSite(Isolate* isolate, Handle<Object> object) {
   MessageLocation location;
   if (ComputeLocation(isolate, &location)) {
-    Zone zone(isolate->allocator());
+    Zone zone(isolate->allocator(), ZONE_NAME);
     std::unique_ptr<ParseInfo> info(
         location.function()->shared()->is_function()
-            ? new ParseInfo(&zone, location.function())
+            ? new ParseInfo(&zone, handle(location.function()->shared()))
             : new ParseInfo(&zone, location.script()));
     if (Parser::ParseStatic(info.get())) {
       CallPrinter printer(isolate, location.function()->shared()->IsBuiltin());
@@ -528,21 +513,6 @@ RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   }
 }
 
-RUNTIME_FUNCTION(Runtime_EnqueueMicrotask) {
-  HandleScope scope(isolate);
-  DCHECK(args.length() == 1);
-  CONVERT_ARG_HANDLE_CHECKED(JSFunction, microtask, 0);
-  isolate->EnqueueMicrotask(microtask);
-  return isolate->heap()->undefined_value();
-}
-
-RUNTIME_FUNCTION(Runtime_RunMicrotasks) {
-  HandleScope scope(isolate);
-  DCHECK(args.length() == 0);
-  isolate->RunMicrotasks();
-  return isolate->heap()->undefined_value();
-}
-
 RUNTIME_FUNCTION(Runtime_OrdinaryHasInstance) {
   HandleScope scope(isolate);
   DCHECK_EQ(2, args.length());
@@ -552,13 +522,13 @@ RUNTIME_FUNCTION(Runtime_OrdinaryHasInstance) {
       isolate, Object::OrdinaryHasInstance(isolate, callable, object));
 }
 
-RUNTIME_FUNCTION(Runtime_IsWasmObject) {
+RUNTIME_FUNCTION(Runtime_IsWasmInstance) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
   CONVERT_ARG_CHECKED(Object, object, 0);
-  bool is_wasm_object =
-      object->IsJSObject() && wasm::IsWasmObject(JSObject::cast(object));
-  return *isolate->factory()->ToBoolean(is_wasm_object);
+  bool is_wasm_instance =
+      object->IsJSObject() && wasm::IsWasmInstance(JSObject::cast(object));
+  return *isolate->factory()->ToBoolean(is_wasm_instance);
 }
 
 RUNTIME_FUNCTION(Runtime_Typeof) {

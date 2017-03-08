@@ -1,6 +1,6 @@
 # Modules
 
-> Stability: 3 - Locked
+> Stability: 2 - Stable
 
 <!--name=module-->
 
@@ -463,7 +463,7 @@ added: v0.1.16
 
 In each module, the `module` free variable is a reference to the object
 representing the current module.  For convenience, `module.exports` is
-also accessible via the `exports` module-global. `module` isn't actually
+also accessible via the `exports` module-global. `module` is not actually
 a global but rather local to each module.
 
 ### module.children
@@ -618,7 +618,7 @@ The module that first required this one.
 added: v0.5.1
 -->
 
-* `id` {String}
+* `id` {string}
 * Returns: {Object} `module.exports` from the resolved module
 
 The `module.require` method provides a way to load a module as if

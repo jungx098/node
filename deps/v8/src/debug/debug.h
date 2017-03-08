@@ -11,11 +11,12 @@
 #include "src/base/atomicops.h"
 #include "src/base/hashmap.h"
 #include "src/base/platform/platform.h"
-#include "src/debug/liveedit.h"
+#include "src/debug/debug-interface.h"
 #include "src/execution.h"
 #include "src/factory.h"
 #include "src/flags.h"
 #include "src/frames.h"
+#include "src/globals.h"
 #include "src/runtime/runtime.h"
 #include "src/source-position-table.h"
 #include "src/string-stream.h"
@@ -290,7 +291,7 @@ class MessageImpl: public v8::Debug::Message {
 
 
 // Details of the debug event delivered to the debug event listener.
-class EventDetailsImpl : public v8::Debug::EventDetails {
+class EventDetailsImpl : public v8::DebugInterface::EventDetails {
  public:
   EventDetailsImpl(DebugEvent event,
                    Handle<JSObject> exec_state,
@@ -413,11 +414,12 @@ class Debug {
   void OnDebugBreak(Handle<Object> break_points_hit, bool auto_continue);
 
   void OnThrow(Handle<Object> exception);
-  void OnPromiseReject(Handle<JSObject> promise, Handle<Object> value);
+  void OnPromiseReject(Handle<Object> promise, Handle<Object> value);
   void OnCompileError(Handle<Script> script);
   void OnBeforeCompile(Handle<Script> script);
   void OnAfterCompile(Handle<Script> script);
-  void OnAsyncTaskEvent(Handle<JSObject> data);
+  void OnAsyncTaskEvent(Handle<String> type, Handle<Object> id,
+                        Handle<String> name);
 
   // API facing.
   void SetEventListener(Handle<Object> callback, Handle<Object> data);
@@ -459,6 +461,8 @@ class Debug {
   void ClearStepOut();
 
   bool PrepareFunctionForBreakPoints(Handle<SharedFunctionInfo> shared);
+  bool GetPossibleBreakpoints(Handle<Script> script, int start_position,
+                              int end_position, std::set<int>* positions);
 
   void RecordAsyncFunction(Handle<JSGeneratorObject> generator_object);
 
@@ -489,7 +493,7 @@ class Debug {
 
   // Support for LiveEdit
   void FramesHaveBeenDropped(StackFrame::Id new_break_frame_id,
-                             LiveEdit::FrameDropMode mode);
+                             LiveEditFrameDropMode mode);
 
   // Threading support.
   char* ArchiveDebug(char* to);
@@ -499,8 +503,11 @@ class Debug {
   void Iterate(ObjectVisitor* v);
 
   bool CheckExecutionState(int id) {
-    return is_active() && !debug_context().is_null() && break_id() != 0 &&
-           break_id() == id;
+    return CheckExecutionState() && break_id() == id;
+  }
+
+  bool CheckExecutionState() {
+    return is_active() && !debug_context().is_null() && break_id() != 0;
   }
 
   // Flags and states.
@@ -569,11 +576,11 @@ class Debug {
   }
 
   void clear_suspended_generator() {
-    thread_local_.suspended_generator_ = Smi::FromInt(0);
+    thread_local_.suspended_generator_ = Smi::kZero;
   }
 
   bool has_suspended_generator() const {
-    return thread_local_.suspended_generator_ != Smi::FromInt(0);
+    return thread_local_.suspended_generator_ != Smi::kZero;
   }
 
   void OnException(Handle<Object> exception, Handle<Object> promise);
@@ -588,14 +595,12 @@ class Debug {
       Handle<Object> promise);
   MUST_USE_RESULT MaybeHandle<Object> MakeCompileEvent(
       Handle<Script> script, v8::DebugEvent type);
-  MUST_USE_RESULT MaybeHandle<Object> MakeAsyncTaskEvent(
-      Handle<JSObject> task_event);
+  MUST_USE_RESULT MaybeHandle<Object> MakeAsyncTaskEvent(Handle<String> type,
+                                                         Handle<Object> id,
+                                                         Handle<String> name);
 
   // Mirror cache handling.
   void ClearMirrorCache();
-
-  MaybeHandle<Object> PromiseHasUserDefinedRejectHandler(
-      Handle<JSObject> promise);
 
   void CallEventCallback(v8::DebugEvent event,
                          Handle<Object> exec_state,
@@ -704,7 +709,7 @@ class Debug {
 
     // Stores the way how LiveEdit has patched the stack. It is used when
     // debugger returns control back to user script.
-    LiveEdit::FrameDropMode frame_drop_mode_;
+    LiveEditFrameDropMode frame_drop_mode_;
 
     // Value of accumulator in interpreter frames. In non-interpreter frames
     // this value will be the hole.

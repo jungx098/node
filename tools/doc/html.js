@@ -67,6 +67,7 @@ function toHTML(opts, cb) {
         filename: opts.filename,
         template: template,
         nodeVersion: nodeVersion,
+        analytics: opts.analytics,
       }, cb);
     });
   }
@@ -128,6 +129,13 @@ function render(opts, cb) {
       gtocData.replace('class="nav-' + id, 'class="nav-' + id + ' active')
     );
 
+    if (opts.analytics) {
+      template = template.replace(
+        '<!-- __TRACKING__ -->',
+        analyticsScript(opts.analytics)
+      );
+    }
+
     // content has to be the last thing we do with
     // the lexed tokens, because it's destructive.
     const content = marked.parser(lexed);
@@ -135,6 +143,23 @@ function render(opts, cb) {
 
     cb(null, template);
   });
+}
+
+function analyticsScript(analytics) {
+  return `
+    <script src="assets/dnt_helper.js"></script>
+    <script>
+      if (!_dntEnabled()) {
+        (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;
+        i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},
+        i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];
+        a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,
+        'script','//www.google-analytics.com/analytics.js','ga');
+        ga('create', '${analytics}', 'auto');
+        ga('send', 'pageview');
+      }
+    </script>
+  `;
 }
 
 // handle general body-text replacements
@@ -183,7 +208,7 @@ function parseLists(input) {
           headingIndex = -1;
           heading = null;
         }
-        tok.text = parseAPIHeader(tok.text);
+        tok.text = parseAPIHeader(tok.text).replace(/\n/g, ' ');
         output.push({ type: 'html', text: tok.text });
         return;
       } else if (state === 'MAYBE_STABILITY_BQ') {
@@ -244,12 +269,40 @@ function parseYAML(text) {
   const meta = common.extractAndParseYAML(text);
   const html = ['<div class="api_metadata">'];
 
+  const added = { description: '' };
+  const deprecated = { description: '' };
+
   if (meta.added) {
-    html.push(`<span>Added in: ${meta.added.join(', ')}</span>`);
+    added.version = meta.added.join(', ');
+    added.description = `<span>Added in: ${added.version}</span>`;
   }
 
   if (meta.deprecated) {
-    html.push(`<span>Deprecated since: ${meta.deprecated.join(', ')} </span>`);
+    deprecated.version = meta.deprecated.join(', ');
+    deprecated.description =
+        `<span>Deprecated since: ${deprecated.version}</span>`;
+  }
+
+  if (meta.changes.length > 0) {
+    let changes = meta.changes.slice();
+    if (added.description) changes.push(added);
+    if (deprecated.description) changes.push(deprecated);
+
+    changes = changes.sort((a, b) => versionSort(a.version, b.version));
+
+    html.push('<details class="changelog"><summary>History</summary>');
+    html.push('<table>');
+    html.push('<tr><th>Version</th><th>Changes</th></tr>');
+
+    changes.forEach((change) => {
+      html.push(`<tr><td>${change.version}</td>`);
+      html.push(`<td>${marked(change.description)}</td></tr>`);
+    });
+
+    html.push('</table>');
+    html.push('</details>');
+  } else {
+    html.push(`${added.description}${deprecated.description}`);
   }
 
   html.push('</div>');
@@ -263,17 +316,19 @@ var BSD_ONLY_SYSCALLS = new Set(['lchmod']);
 // Returns modified text, with such refs replace with HTML links, for example
 // '<a href="http://man7.org/linux/man-pages/man2/open.2.html">open(2)</a>'
 function linkManPages(text) {
-  return text.replace(/ ([a-z.]+)\((\d)\)/gm, function(match, name, number) {
-    // name consists of lowercase letters, number is a single digit
-    var displayAs = name + '(' + number + ')';
-    if (BSD_ONLY_SYSCALLS.has(name)) {
-      return ' <a href="https://www.freebsd.org/cgi/man.cgi?query=' + name +
-             '&sektion=' + number + '">' + displayAs + '</a>';
-    } else {
-      return ' <a href="http://man7.org/linux/man-pages/man' + number +
-             '/' + name + '.' + number + '.html">' + displayAs + '</a>';
-    }
-  });
+  return text.replace(
+    / ([a-z.]+)\((\d)([a-z]?)\)/gm,
+    (match, name, number, optionalCharacter) => {
+      // name consists of lowercase letters, number is a single digit
+      var displayAs = `${name}(${number}${optionalCharacter})`;
+      if (BSD_ONLY_SYSCALLS.has(name)) {
+        return ` <a href="https://www.freebsd.org/cgi/man.cgi?query=${name}` +
+          `&sektion=${number}">${displayAs}</a>`;
+      } else {
+        return ` <a href="http://man7.org/linux/man-pages/man${number}` +
+          `/${name}.${number}${optionalCharacter}.html">${displayAs}</a>`;
+      }
+    });
 }
 
 function linkJsTypeDocs(text) {
@@ -364,4 +419,15 @@ function getId(text) {
     idCounters[text] = 0;
   }
   return text;
+}
+
+const numberRe = /^(\d*)/;
+function versionSort(a, b) {
+  a = a.trim();
+  b = b.trim();
+  let i = 0;  // common prefix length
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  a = a.substr(i);
+  b = b.substr(i);
+  return +b.match(numberRe)[1] - +a.match(numberRe)[1];
 }
